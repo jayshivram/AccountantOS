@@ -363,7 +363,7 @@ const STORAGE_KEY = 'accountant-os-v1';
 
 export function saveState(state) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, _syncedAt: Date.now() }));
   } catch (e) {
     console.warn('Failed to save state', e);
   }

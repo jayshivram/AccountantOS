@@ -142,6 +142,7 @@ export function AppProvider({ children }) {
   const [syncStatus, setSyncStatus] = useState('idle'); // 'idle'|'syncing'|'synced'|'error'
   const pushTimerRef   = useRef(null);
   const skipPushRef    = useRef(false); // true when a remote update just set state
+  const stateRef       = useRef(state); // always holds latest state for event handlers
 
   // ── Apply dark mode ──
   useEffect(() => {
@@ -151,15 +152,32 @@ export function AppProvider({ children }) {
   // ── Push to Supabase (debounced 1.5 s) ──
   const pushToSupabase = useCallback(async (data) => {
     setSyncStatus('syncing');
+    const updatedAt = new Date().toISOString();
     try {
       const { error } = await supabase
         .from('app_state')
-        .upsert({ id: SYNC_ROW_ID, data, updated_at: new Date().toISOString() });
+        .upsert({ id: SYNC_ROW_ID, data, updated_at: updatedAt });
+      if (!error) {
+        // Record the exact remote timestamp so startup pull knows we're already in sync
+        try {
+          const raw = localStorage.getItem('accountant-os-v1');
+          if (raw) {
+            const stored = JSON.parse(raw);
+            localStorage.setItem('accountant-os-v1', JSON.stringify({
+              ...stored,
+              _syncedAt: new Date(updatedAt).getTime(),
+            }));
+          }
+        } catch { /* ignore */ }
+      }
       setSyncStatus(error ? 'error' : 'synced');
     } catch {
       setSyncStatus('error');
     }
   }, []);
+
+  // ── Keep stateRef current so event handlers always see fresh state ──
+  useEffect(() => { stateRef.current = state; }, [state]);
 
   // ── Persist to localStorage + schedule Supabase push on every state change ──
   useEffect(() => {
@@ -173,6 +191,19 @@ export function AppProvider({ children }) {
     clearTimeout(pushTimerRef.current);
     pushTimerRef.current = setTimeout(() => pushToSupabase(persisted), 1500);
   }, [state, pushToSupabase]);
+
+  // ── Push immediately when tab is hidden (mobile background / tab switch) ──
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        clearTimeout(pushTimerRef.current);
+        const { currentView, currentMonth, ...persisted } = stateRef.current;
+        pushToSupabase(persisted);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [pushToSupabase]);
 
   // ── On mount: pull from Supabase and start real-time subscription ──
   useEffect(() => {

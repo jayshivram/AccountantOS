@@ -149,18 +149,20 @@ function TaskRow({ task, onComplete }) {
 
 function QuickStats() {
   const { state } = useApp();
+  const deadlines = useMemo(() => getUpcomingDeadlines(365), []);
 
-  const totalClients   = state.clients.length;
-  const pendingTasks   = state.tasks.filter(t => t.status !== 'completed').length;
-  const today          = new Date().toISOString().slice(0, 10);
-  const overdueTasks   = state.tasks.filter(t => t.dueDate && t.dueDate.slice(0, 10) < today && t.status !== 'completed').length;
-  const completedToday = state.tasks.filter(t => t.completedAt && t.completedAt.slice(0, 10) === today).length;
+  const totalClients      = state.clients.length;
+  const pendingTasks      = state.tasks.filter(t => t.status !== 'completed').length;
+  const today             = new Date().toISOString().slice(0, 10);
+  // Count overdue TAX DEADLINES (the cards shown below on the dashboard)
+  const overdueDeadlines  = deadlines.filter(d => d.daysRemaining < 0).length;
+  const completedToday    = state.tasks.filter(t => t.completedAt && t.completedAt.slice(0, 10) === today).length;
 
   const stats = [
-    { label: 'Total Clients', value: totalClients, icon: '👥', color: 'text-blue-600 dark:text-blue-400' },
-    { label: 'Pending Tasks', value: pendingTasks,  icon: '📋', color: 'text-amber-600 dark:text-amber-400' },
-    { label: 'Overdue',       value: overdueTasks,  icon: '⚠️', color: overdueTasks > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400' },
-    { label: 'Done Today',    value: completedToday, icon: '✅', color: 'text-green-600 dark:text-green-400' },
+    { label: 'Total Clients', value: totalClients,     icon: '👥', color: 'text-blue-600 dark:text-blue-400' },
+    { label: 'Pending Tasks', value: pendingTasks,     icon: '📋', color: 'text-amber-600 dark:text-amber-400' },
+    { label: 'Overdue',       value: overdueDeadlines, icon: '⚠️', color: overdueDeadlines > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400' },
+    { label: 'Done Today',    value: completedToday,   icon: '✅', color: 'text-green-600 dark:text-green-400' },
   ];
 
   return (

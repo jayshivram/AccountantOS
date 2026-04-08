@@ -175,3 +175,73 @@
 .progress-bar {
   transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* ─── Print Styles ─────────────────────────────────────────────────── */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 1.2cm 1cm;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide everything except the export page content */
+  body > #root > * > nav,
+  body > #root > * > aside,
+  body > #root [data-no-print],
+  .no-print {
+    display: none !important;
+  }
+
+  /* Also hide the header buttons (Export CSV + Print) */
+  .btn,
+  button {
+    display: none !important;
+  }
+
+  /* Keep the page header text visible */
+  h1, h2, h3, p {
+    display: block !important;
+  }
+
+  /* Remove shadows and borders that waste ink */
+  .card, .card-elevated {
+    box-shadow: none !important;
+    border: 1px solid #d1d5db !important;
+  }
+
+  /* Fix the table overflow — this is why phone print clips columns */
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  table {
+    min-width: 0 !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 9pt !important;
+  }
+
+  th, td {
+    padding: 4px 6px !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+  }
+
+  /* Keep table rows together where possible */
+  tr {
+    page-break-inside: avoid;
+  }
+
+  /* Repeat header on each printed page */
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+}
