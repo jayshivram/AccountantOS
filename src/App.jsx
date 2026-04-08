@@ -255,6 +255,7 @@ function Sidebar({ currentView, onNavigate, onSettings, mobileOpen, onMobileClos
         <div>
           <p className="font-bold text-gray-900 dark:text-white text-sm leading-none">AccountantOS</p>
           <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">Personal Tax Manager</p>
+          <p className="text-[9px] text-gray-400 dark:text-gray-600 mt-0.5">by Jay Shivram</p>
         </div>
         {/* Mobile close */}
         <button onClick={onMobileClose} className="ml-auto lg:hidden btn-ghost p-1"><Icons.Close /></button>
@@ -383,7 +384,10 @@ function AppShell() {
             <button onClick={() => setMobileMenuOpen(true)} className="btn-ghost p-1.5">
               <Icons.Menu />
             </button>
-            <p className="font-bold text-gray-900 dark:text-white text-sm">AccountantOS</p>
+            <div>
+              <p className="font-bold text-gray-900 dark:text-white text-sm leading-none">AccountantOS</p>
+              <p className="text-[9px] text-gray-400 dark:text-gray-500">by Jay Shivram</p>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <BatteryWidget />
