@@ -100,7 +100,7 @@ export default function Calendar() {
       <button
         onClick={() => handleDayClick(date)}
         className={cn(
-          'relative min-h-[80px] p-1.5 rounded-lg border transition-all hover:border-gray-600 hover:bg-gray-800/50 text-left',
+          'relative min-h-[44px] sm:min-h-[80px] p-1 sm:p-1.5 rounded-md sm:rounded-lg border transition-all hover:border-gray-600 hover:bg-gray-800/50 text-left w-full overflow-hidden',
           today ? 'border-blue-500 bg-blue-900/20' : 'border-gray-800',
           hasItems ? 'cursor-pointer' : ''
         )}
@@ -160,17 +160,17 @@ export default function Calendar() {
   }
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 animate-fade-in min-w-0">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-extrabold text-white">Calendar</h1>
           <p className="text-sm text-gray-400">Tax deadlines and task due dates</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <button onClick={goToday} className="btn-secondary text-xs py-1.5">Today</button>
           <button onClick={prevMonth} className="btn-ghost p-2">‹</button>
-          <span className="text-base font-bold text-gray-100 min-w-[140px] text-center">
+          <span className="text-sm font-bold text-gray-100 min-w-[120px] text-center">
             {format(currentDate, 'MMMM yyyy')}
           </span>
           <button onClick={nextMonth} className="btn-ghost p-2">›</button>
@@ -178,7 +178,7 @@ export default function Calendar() {
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-3 text-xs text-gray-400">
+      <div className="flex flex-wrap gap-2 sm:gap-3 text-xs text-gray-400 overflow-hidden">
         {Object.entries(TAX_COLORS).map(([key, colors]) => (
           <span key={key} className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: colors.hex }} />
@@ -192,19 +192,19 @@ export default function Calendar() {
       </div>
 
       {/* Calendar Grid */}
-      <div className="card p-4">
+      <div className="card p-2 sm:p-4 overflow-hidden">
         {/* Day headers */}
-        <div className="grid grid-cols-7 gap-1 mb-2">
+        <div className="grid grid-cols-7 gap-0.5 sm:gap-1 mb-1 sm:mb-2">
           {dayNames.map(d => (
-            <div key={d} className="text-center text-xs font-semibold text-gray-500 py-1">{d}</div>
+            <div key={d} className="text-center text-[10px] sm:text-xs font-semibold text-gray-500 py-1">{d}</div>
           ))}
         </div>
 
         {/* Day cells */}
-        <div className="grid grid-cols-7 gap-1">
+        <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
           {/* Padding cells */}
           {Array.from({ length: startPad }).map((_, i) => (
-            <div key={`pad-${i}`} className="min-h-[80px]" />
+            <div key={`pad-${i}`} className="min-h-[44px] sm:min-h-[80px]" />
           ))}
           {/* Real cells */}
           {days.map(date => (

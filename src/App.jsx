@@ -379,17 +379,20 @@ function AppShell() {
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Mobile Header */}
-        <header className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 sticky top-0 z-30">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setMobileMenuOpen(true)} className="btn-ghost p-1.5">
+        <header className="lg:hidden flex items-center justify-between px-3 py-2.5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 sticky top-0 z-30">
+          {/* Left: menu + branding */}
+          <div className="flex items-center gap-2 min-w-0">
+            <button onClick={() => setMobileMenuOpen(true)} className="btn-ghost p-1.5 flex-shrink-0">
               <Icons.Menu />
             </button>
-            <div>
-              <p className="font-bold text-gray-900 dark:text-white text-sm leading-none">AccountantOS</p>
-              <p className="text-[9px] text-gray-400 dark:text-gray-500">by Jay Shivram</p>
+            <div className="min-w-0">
+              <p className="font-bold text-gray-900 dark:text-white text-sm leading-none truncate">AccountantOS</p>
+              <p className="text-[9px] text-gray-400 dark:text-gray-500 truncate">by Jay Shivram</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+
+          {/* Right: battery · sync · dark toggle */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <BatteryWidget />
             <SyncBadge />
             <button
@@ -407,7 +410,6 @@ function AppShell() {
                 </svg>
               )}
             </button>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{titles[currentView]}</p>
           </div>
         </header>
 
@@ -440,8 +442,8 @@ function AppShell() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-950">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-950">
+          <div className="max-w-7xl mx-auto px-3 sm:px-6 py-6 min-w-0">
             {renderPage()}
           </div>
         </main>
