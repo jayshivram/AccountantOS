@@ -324,7 +324,7 @@ export default function Dashboard({ onNavigate }) {
     return !(due.getMonth() === currentMonth && due.getFullYear() === currentYear);
   }), [deadlines, currentMonth, currentYear]);
 
-  const [collapsed, setCollapsed] = useState({ overdue: false, current: true, upcoming: true });
+  const [collapsed, setCollapsed] = useState({ overdue: false, current: false, upcoming: true });
   const toggle = (key) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
 
   const today = format(new Date(), 'EEEE, dd MMMM yyyy');

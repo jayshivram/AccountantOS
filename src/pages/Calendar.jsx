@@ -16,12 +16,12 @@ function DayDetailModal({ date, deadlines, tasks, clients, isOpen, onClose }) {
       <div className="space-y-4">
         {deadlines.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Tax Deadlines</p>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Tax Deadlines</p>
             <div className="space-y-2">
               {deadlines.map((d, i) => (
                 <div key={i} className={cn('flex items-center gap-2 p-2 rounded-lg', TAX_COLORS[d.type]?.bg)}>
                   <TaxTypeBadge type={d.type} />
-                  <span className="text-sm text-gray-200">{d.label}</span>
+                  <span className="text-sm text-gray-800 dark:text-gray-200">{d.label}</span>
                 </div>
               ))}
             </div>
@@ -30,15 +30,15 @@ function DayDetailModal({ date, deadlines, tasks, clients, isOpen, onClose }) {
 
         {tasks.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Tasks Due</p>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Tasks Due</p>
             <div className="space-y-2">
               {tasks.map(t => {
                 const client = clients.find(c => c.id === t.clientId);
                 return (
-                  <div key={t.id} className="flex items-center gap-2 p-2 rounded-lg bg-gray-800">
+                  <div key={t.id} className="flex items-center gap-2 p-2 rounded-lg bg-gray-100 dark:bg-gray-800">
                     <span className={cn('w-1.5 h-1.5 rounded-full', t.status === 'completed' ? 'bg-green-400' : 'bg-amber-400')} />
                     <div className="flex-1">
-                      <p className={cn('text-sm', t.status === 'completed' ? 'line-through text-gray-500' : 'text-gray-200')}>{t.title}</p>
+                      <p className={cn('text-sm', t.status === 'completed' ? 'line-through text-gray-500' : 'text-gray-800 dark:text-gray-200')}>{t.title}</p>
                       {client && <p className="text-xs text-gray-500">{client.name}</p>}
                     </div>
                     {t.taxType && <TaxTypeBadge type={t.taxType} size="xs" />}
@@ -101,15 +101,15 @@ export default function Calendar() {
       <button
         onClick={() => handleDayClick(date)}
         className={cn(
-          'relative min-h-[64px] sm:min-h-[80px] p-1 sm:p-1.5 rounded-md sm:rounded-lg border transition-all hover:border-gray-600 hover:bg-gray-800/50 text-left w-full overflow-hidden',
-          today ? 'border-blue-500 bg-blue-900/20' : 'border-gray-800',
+          'relative min-h-[64px] sm:min-h-[80px] p-1 sm:p-1.5 rounded-md sm:rounded-lg border transition-all hover:border-gray-400 dark:hover:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800/50 text-left w-full overflow-hidden',
+          today ? 'border-blue-500 bg-blue-900/20' : 'border-gray-200 dark:border-gray-800',
           hasItems ? 'cursor-pointer' : ''
         )}
       >
         {/* Day number */}
         <div className={cn(
           'w-6 h-6 text-xs font-bold mb-1 flex items-center justify-center rounded-full',
-          today ? 'bg-blue-500 text-white' : 'text-gray-400'
+          today ? 'bg-blue-500 text-white' : 'text-gray-700 dark:text-gray-400'
         )}>
           {format(date, 'd')}
         </div>
@@ -165,13 +165,13 @@ export default function Calendar() {
       {/* Header */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-extrabold text-white">Calendar</h1>
-          <p className="text-sm text-gray-400">Tax deadlines and task due dates</p>
+          <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">Calendar</h1>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Tax deadlines and task due dates</p>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
           <button onClick={goToday} className="btn-secondary text-xs py-1.5">Today</button>
           <button onClick={prevMonth} className="btn-ghost p-2">‹</button>
-          <span className="text-sm font-bold text-gray-100 min-w-[120px] text-center">
+          <span className="text-sm font-bold text-gray-800 dark:text-gray-100 min-w-[120px] text-center">
             {format(currentDate, 'MMMM yyyy')}
           </span>
           <button onClick={nextMonth} className="btn-ghost p-2">›</button>
@@ -181,13 +181,13 @@ export default function Calendar() {
       {/* Legend */}
       <div>
         <button
-          className="flex sm:hidden items-center gap-1.5 text-xs text-gray-400 mb-1 select-none"
+          className="flex sm:hidden items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 mb-1 select-none"
           onClick={() => setLegendOpen(v => !v)}
         >
           <span className="font-medium">Legend</span>
           <span className="text-gray-500">{legendOpen ? '▲' : '▼'}</span>
         </button>
-        <div className={cn('flex flex-wrap gap-2 sm:gap-3 text-xs text-gray-400 overflow-hidden', !legendOpen && 'hidden sm:flex')}>
+        <div className={cn('flex flex-wrap gap-2 sm:gap-3 text-xs text-gray-600 dark:text-gray-400 overflow-hidden', !legendOpen && 'hidden sm:flex')}>
           {Object.entries(TAX_COLORS).map(([key, colors]) => (
             <span key={key} className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: colors.hex }} />
