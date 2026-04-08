@@ -179,7 +179,7 @@ export default function ExportPage() {
       </div>
 
       {/* Controls card: month picker + tax type filter */}
-      <div className="card p-4 space-y-3">
+      <div className="card p-4 space-y-3" data-no-print>
         {/* Month navigation */}
         <div className="flex items-center gap-2">
           <button onClick={prevMonth} className="btn-ghost p-2 rounded-lg">

@@ -64,6 +64,7 @@ export default function Calendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
 
   const year  = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -100,7 +101,7 @@ export default function Calendar() {
       <button
         onClick={() => handleDayClick(date)}
         className={cn(
-          'relative min-h-[44px] sm:min-h-[80px] p-1 sm:p-1.5 rounded-md sm:rounded-lg border transition-all hover:border-gray-600 hover:bg-gray-800/50 text-left w-full overflow-hidden',
+          'relative min-h-[64px] sm:min-h-[80px] p-1 sm:p-1.5 rounded-md sm:rounded-lg border transition-all hover:border-gray-600 hover:bg-gray-800/50 text-left w-full overflow-hidden',
           today ? 'border-blue-500 bg-blue-900/20' : 'border-gray-800',
           hasItems ? 'cursor-pointer' : ''
         )}
@@ -178,17 +179,26 @@ export default function Calendar() {
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-2 sm:gap-3 text-xs text-gray-400 overflow-hidden">
-        {Object.entries(TAX_COLORS).map(([key, colors]) => (
-          <span key={key} className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: colors.hex }} />
-            {key}
+      <div>
+        <button
+          className="flex sm:hidden items-center gap-1.5 text-xs text-gray-400 mb-1 select-none"
+          onClick={() => setLegendOpen(v => !v)}
+        >
+          <span className="font-medium">Legend</span>
+          <span className="text-gray-500">{legendOpen ? '▲' : '▼'}</span>
+        </button>
+        <div className={cn('flex flex-wrap gap-2 sm:gap-3 text-xs text-gray-400 overflow-hidden', !legendOpen && 'hidden sm:flex')}>
+          {Object.entries(TAX_COLORS).map(([key, colors]) => (
+            <span key={key} className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: colors.hex }} />
+              {key}
+            </span>
+          ))}
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            Tasks
           </span>
-        ))}
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-amber-400" />
-          Tasks
-        </span>
+        </div>
       </div>
 
       {/* Calendar Grid */}
@@ -204,7 +214,7 @@ export default function Calendar() {
         <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
           {/* Padding cells */}
           {Array.from({ length: startPad }).map((_, i) => (
-            <div key={`pad-${i}`} className="min-h-[44px] sm:min-h-[80px]" />
+            <div key={`pad-${i}`} className="min-h-[64px] sm:min-h-[80px]" />
           ))}
           {/* Real cells */}
           {days.map(date => (
@@ -224,6 +234,43 @@ export default function Calendar() {
           onClose={() => setModalOpen(false)}
         />
       )}
+
+      {/* Mobile Agenda — fills the empty space below the calendar grid */}
+      <div className="block sm:hidden">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+          {format(currentDate, 'MMMM yyyy')} — Deadlines
+        </h2>
+        {(() => {
+          const agendaItems = [];
+          days.forEach(date => {
+            const taxDeadlines = getDeadlinesForDate(date);
+            const dayTasks = state.tasks.filter(t => t.dueDate && t.dueDate.slice(0, 10) === format(date, 'yyyy-MM-dd'));
+            const dayNum = format(date, 'd MMM');
+            taxDeadlines.forEach(d => agendaItems.push({ key: `${d.type}-${format(date,'yyyy-MM-dd')}`, type: d.type, label: d.label, day: dayNum, isTask: false }));
+            dayTasks.forEach(t => agendaItems.push({ key: t.id, type: 'TASK', label: t.title, day: dayNum, isTask: true }));
+          });
+          if (agendaItems.length === 0) {
+            return <p className="text-sm text-gray-500 dark:text-gray-600 italic">No deadlines or tasks this month.</p>;
+          }
+          return (
+            <div className="space-y-1.5">
+              {agendaItems.map(item => (
+                <div key={item.key} className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-lg border',
+                  item.isTask
+                    ? 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-700/30'
+                    : (TAX_COLORS[item.type]?.bg + ' ' + TAX_COLORS[item.type]?.border || 'bg-gray-800 border-gray-700')
+                )}>
+                  <span className="text-xs font-bold text-gray-500 dark:text-gray-400 w-10 flex-shrink-0">{item.day}</span>
+                  {!item.isTask && <TaxTypeBadge type={item.type} />}
+                  {item.isTask && <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-amber-200 dark:bg-amber-800/40 text-amber-800 dark:text-amber-300">Task</span>}
+                  <span className="text-xs text-gray-700 dark:text-gray-300 truncate">{item.label}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </div>
     </div>
   );
 }

@@ -191,10 +191,23 @@ export default function FocusMode({ onNavigate }) {
   const tasks   = useTasks();
   const clients = useClients();
 
-  // ── Tax deadlines (next 7 days + overdue) ──
+  // ── Tax deadlines (next 7 days + overdue) — skip zero-client and fully-complete overdue ──
   const taxDeadlines = useMemo(() => {
-    return getUpcomingDeadlines(7).filter(d => d.daysRemaining <= 7);
-  }, []);
+    return getUpcomingDeadlines(7)
+      .filter(d => d.daysRemaining <= 7)
+      .filter(d => {
+        const total = state.clients.filter(c => c.taxTypes && c.taxTypes.includes(d.type)).length;
+        if (total === 0) return false; // no clients have this tax type
+        // For overdue entries, also hide if every client is already done
+        if (d.daysRemaining < 0) {
+          const completed = state.taxReturns.filter(
+            tr => tr.taxType === d.type && tr.period === d.period && tr.status === 'completed'
+          ).length;
+          if (completed >= total) return false;
+        }
+        return true;
+      });
+  }, [state.clients, state.taxReturns]);
 
   // ── Personal tasks (due within 7 days OR overdue, not completed) ──
   const focusTasks = useMemo(() => {

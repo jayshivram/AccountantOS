@@ -418,6 +418,45 @@ export function sendNotification(title, body) {
   }
 }
 
+// ─── Deadline Completion Helpers ──────────────────────────────────────────────
+
+/** Non-hook: returns { total, completed } client counts for a deadline (safe inside useMemo). */
+export function getClientCountForDeadline(state, type, period) {
+  const total = state.clients.filter(c => c.taxTypes.includes(type)).length;
+  const completed = state.taxReturns.filter(
+    tr => tr.taxType === type && tr.period === period && tr.status === 'completed'
+  ).length;
+  return { total, completed };
+}
+
+// Track which deadlines have already fired a notification this browser session
+const _notifiedThisSession = new Set();
+
+/**
+ * Send browser notifications for overdue/critical deadlines.
+ * Only fires once per deadline per page session to avoid spamming.
+ */
+export function checkAndNotify(state, deadlines) {
+  if (!state.notifications) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  deadlines.forEach(d => {
+    if (d.daysRemaining > 2) return;
+    if (_notifiedThisSession.has(d.id)) return;
+    const { total, completed } = getClientCountForDeadline(state, d.type, d.period);
+    if (total === 0 || completed >= total) return;
+    _notifiedThisSession.add(d.id);
+    const pending = total - completed;
+    const urgency = d.daysRemaining < 0
+      ? `Overdue by ${Math.abs(d.daysRemaining)}d`
+      : d.daysRemaining === 0 ? 'Due today'
+      : `Due in ${d.daysRemaining}d`;
+    sendNotification(
+      `${d.type} ${d.periodLabel} — ${urgency}`,
+      `${pending} of ${total} client${pending !== 1 ? 's' : ''} still pending`
+    );
+  });
+}
+
 // ─── Misc ─────────────────────────────────────────────────────────────────────
 
 export function cn(...classes) {

@@ -180,7 +180,12 @@
 @media print {
   @page {
     size: A4 landscape;
-    margin: 1.2cm 1cm;
+    margin: 1cm 0.8cm;
+  }
+
+  /* Narrow viewports (mobile print) use portrait to fit better */
+  @page :first {
+    size: auto;
   }
 
   * {
@@ -192,6 +197,7 @@
   body > #root > * > nav,
   body > #root > * > aside,
   body > #root [data-no-print],
+  [data-no-print],
   .no-print {
     display: none !important;
   }
@@ -222,11 +228,11 @@
     min-width: 0 !important;
     width: 100% !important;
     border-collapse: collapse !important;
-    font-size: 9pt !important;
+    font-size: 8.5pt !important;
   }
 
   th, td {
-    padding: 4px 6px !important;
+    padding: 3px 5px !important;
     white-space: normal !important;
     word-break: break-word !important;
   }

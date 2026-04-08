@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef, useState, useCallback } from 'react';
 import { INITIAL_CLIENTS, INITIAL_TAX_RETURNS, INITIAL_TASKS } from '../data/initialData.js';
-import { saveState, loadState, uuid } from '../utils/index.js';
+import { saveState, loadState, uuid, getUpcomingDeadlines, checkAndNotify } from '../utils/index.js';
 import { supabase, SYNC_ROW_ID } from '../lib/supabase.js';
 
 // ─── Initial State ─────────────────────────────────────────────────────────────
@@ -142,6 +142,7 @@ export function AppProvider({ children }) {
   const [syncStatus, setSyncStatus] = useState('idle'); // 'idle'|'syncing'|'synced'|'error'
   const pushTimerRef   = useRef(null);
   const skipPushRef    = useRef(false); // true when a remote update just set state
+  const isPullingRef   = useRef(true);  // true until initial Supabase pull completes
   const stateRef       = useRef(state); // always holds latest state for event handlers
 
   // ── Apply dark mode ──
@@ -184,21 +185,24 @@ export function AppProvider({ children }) {
     const { currentView, currentMonth, ...persisted } = state;
     saveState(persisted);
 
+    clearTimeout(pushTimerRef.current); // always cancel any pending push first
     if (skipPushRef.current) {
       skipPushRef.current = false;
       return;
     }
-    clearTimeout(pushTimerRef.current);
+    if (isPullingRef.current) return; // don't push while the initial pull is in flight
     pushTimerRef.current = setTimeout(() => pushToSupabase(persisted), 1500);
   }, [state, pushToSupabase]);
 
-  // ── Push immediately when tab is hidden (mobile background / tab switch) ──
+  // ── Push immediately when tab is hidden; notify on foreground ──
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         clearTimeout(pushTimerRef.current);
         const { currentView, currentMonth, ...persisted } = stateRef.current;
         pushToSupabase(persisted);
+      } else if (document.visibilityState === 'visible') {
+        checkAndNotify(stateRef.current, getUpcomingDeadlines(365));
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -225,11 +229,18 @@ export function AppProvider({ children }) {
           if (remoteUpdated > localUpdated) {
             skipPushRef.current = true;
             dispatch({ type: 'IMPORT_DATA', payload: rows.data });
+            checkAndNotify(rows.data, getUpcomingDeadlines(365));
+          } else {
+            checkAndNotify(stateRef.current, getUpcomingDeadlines(365));
           }
+        } else {
+          checkAndNotify(stateRef.current, getUpcomingDeadlines(365));
         }
         setSyncStatus('synced');
       } catch {
         setSyncStatus('error');
+      } finally {
+        isPullingRef.current = false;
       }
     }
 

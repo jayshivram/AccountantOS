@@ -149,14 +149,24 @@ function TaskRow({ task, onComplete }) {
 
 function QuickStats() {
   const { state } = useApp();
-  const deadlines = useMemo(() => getUpcomingDeadlines(365), []);
+  const deadlines = useMemo(() => {
+    const all = getUpcomingDeadlines(365);
+    return all.filter(d => state.clients.some(c => c.taxTypes.includes(d.type)));
+  }, [state.clients]);
 
-  const totalClients      = state.clients.length;
-  const pendingTasks      = state.tasks.filter(t => t.status !== 'completed').length;
-  const today             = new Date().toISOString().slice(0, 10);
-  // Count overdue TAX DEADLINES (the cards shown below on the dashboard)
-  const overdueDeadlines  = deadlines.filter(d => d.daysRemaining < 0).length;
-  const completedToday    = state.tasks.filter(t => t.completedAt && t.completedAt.slice(0, 10) === today).length;
+  const totalClients   = state.clients.length;
+  const pendingTasks   = state.tasks.filter(t => t.status !== 'completed').length;
+  const today          = new Date().toISOString().slice(0, 10);
+  // Count truly overdue deadlines: past due AND at least one client still pending
+  const overdueDeadlines = deadlines.filter(d => {
+    if (d.daysRemaining >= 0) return false;
+    const total = state.clients.filter(c => c.taxTypes.includes(d.type)).length;
+    const completed = state.taxReturns.filter(
+      tr => tr.taxType === d.type && tr.period === d.period && tr.status === 'completed'
+    ).length;
+    return completed < total;
+  }).length;
+  const completedToday = state.tasks.filter(t => t.completedAt && t.completedAt.slice(0, 10) === today).length;
 
   const stats = [
     { label: 'Total Clients', value: totalClients,     icon: '👥', color: 'text-blue-600 dark:text-blue-400' },
@@ -274,25 +284,40 @@ function CollapsibleSection({ title, dotColor, dotAnimate, titleColor, badgeColo
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function Dashboard({ onNavigate }) {
-  const deadlines = useMemo(() => getUpcomingDeadlines(365), []);
+  const { state } = useApp();
+
+  // Only show deadlines for tax types that at least one client has
+  const deadlines = useMemo(() => {
+    const all = getUpcomingDeadlines(365);
+    return all.filter(d => state.clients.some(c => c.taxTypes.includes(d.type)));
+  }, [state.clients]);
 
   const now = new Date();
   const currentMonth = now.getMonth();
   const currentYear  = now.getFullYear();
 
-  const overdue = deadlines.filter(d => d.daysRemaining < 0);
+  // Overdue = past due + at least one client still pending
+  const overdue = useMemo(() => deadlines.filter(d => {
+    if (d.daysRemaining >= 0) return false;
+    const total = state.clients.filter(c => c.taxTypes.includes(d.type)).length;
+    if (total === 0) return false;
+    const completed = state.taxReturns.filter(
+      tr => tr.taxType === d.type && tr.period === d.period && tr.status === 'completed'
+    ).length;
+    return completed < total;
+  }), [deadlines, state.clients, state.taxReturns]);
 
-  const currentDeadlines = deadlines.filter(d => {
+  const currentDeadlines = useMemo(() => deadlines.filter(d => {
     if (d.daysRemaining < 0) return false;
     const due = new Date(d.dueDate);
     return due.getMonth() === currentMonth && due.getFullYear() === currentYear;
-  });
+  }), [deadlines, currentMonth, currentYear]);
 
-  const upcomingDeadlines = deadlines.filter(d => {
+  const upcomingDeadlines = useMemo(() => deadlines.filter(d => {
     if (d.daysRemaining < 0) return false;
     const due = new Date(d.dueDate);
     return !(due.getMonth() === currentMonth && due.getFullYear() === currentYear);
-  });
+  }), [deadlines, currentMonth, currentYear]);
 
   const [collapsed, setCollapsed] = useState({ overdue: false, current: false, upcoming: false });
   const toggle = (key) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
@@ -320,18 +345,25 @@ export default function Dashboard({ onNavigate }) {
       <QuickStats />
 
       {/* Overdue Deadlines */}
-      <CollapsibleSection
-        title="Overdue Deadlines"
-        dotColor="bg-red-500"
-        dotAnimate={overdue.length > 0}
-        titleColor="text-red-600 dark:text-red-400"
-        badgeColor={overdue.length > 0 ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}
-        count={overdue.length}
-        isCollapsed={collapsed.overdue}
-        onToggle={() => toggle('overdue')}
-        deadlines={overdue}
-        emptyText="No overdue deadlines — great work!"
-      />
+      {overdue.length === 0 ? (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800/50">
+          <span className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0" />
+          <p className="text-sm font-semibold text-green-700 dark:text-green-400">No overdue deadlines — all on track!</p>
+        </div>
+      ) : (
+        <CollapsibleSection
+          title="Overdue Deadlines"
+          dotColor="bg-red-500"
+          dotAnimate={true}
+          titleColor="text-red-600 dark:text-red-400"
+          badgeColor="bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+          count={overdue.length}
+          isCollapsed={collapsed.overdue}
+          onToggle={() => toggle('overdue')}
+          deadlines={overdue}
+          emptyText="No overdue deadlines — great work!"
+        />
+      )}
 
       {/* Current Month Deadlines */}
       <CollapsibleSection
