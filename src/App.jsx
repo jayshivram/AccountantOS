@@ -135,9 +135,17 @@ function SettingsModal({ isOpen, onClose }) {
     e.target.value = '';
   }
 
-  function enableNotifications() {
-    requestNotificationPermission();
-    dispatch({ type: 'TOGGLE_NOTIFICATIONS' });
+  async function enableNotifications() {
+    if (!('Notification' in window)) {
+      alert('Notifications are not supported in this browser.');
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      dispatch({ type: 'TOGGLE_NOTIFICATIONS' });
+    } else {
+      alert('Notification permission was denied. Please enable it in your browser settings.');
+    }
   }
 
   async function handleInstall() {
@@ -316,8 +324,14 @@ function Sidebar({ currentView, onNavigate, onSettings, mobileOpen, onMobileClos
       {/* Mobile Sidebar Overlay */}
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-40 flex">
-          <div className="absolute inset-0 bg-black/60" onClick={onMobileClose} />
-          <aside className="relative w-64 bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 animate-slide-in">
+          {/* Backdrop — blocks all touch/scroll events on the bg */}
+          <div
+            className="absolute inset-0 bg-black/70"
+            onClick={onMobileClose}
+            onTouchMove={e => e.preventDefault()}
+          />
+          {/* Sidebar panel */}
+          <aside className="relative w-72 max-w-[85vw] bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 animate-slide-in flex flex-col overflow-y-auto">
             {sidebarContent}
           </aside>
         </div>
@@ -332,6 +346,16 @@ function AppShell() {
   const { state, dispatch } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Lock body scroll when mobile sidebar is open
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [mobileMenuOpen]);
 
   const currentView = state.currentView;
 

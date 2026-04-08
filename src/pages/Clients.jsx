@@ -410,12 +410,12 @@ function ClientRow({ client, onEdit, onDelete, onViewFilings }) {
 
   return (
     <div className="card p-4 hover:border-gray-700 transition-all group">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
             <h3 className="font-bold text-gray-800 dark:text-gray-100 text-sm truncate">{client.name}</h3>
             {pendingTasks > 0 && (
-              <span className="badge bg-amber-900/40 text-amber-300 border border-amber-700/40 text-[10px]">
+              <span className="badge bg-amber-900/40 text-amber-300 border border-amber-700/40 text-[10px] flex-shrink-0">
                 {pendingTasks} task{pendingTasks > 1 ? 's' : ''}
               </span>
             )}
@@ -425,24 +425,27 @@ function ClientRow({ client, onEdit, onDelete, onViewFilings }) {
             {client.taxTypes.map(t => <TaxTypeBadge key={t} type={t} size="xs" />)}
           </div>
 
-          <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-500">
-            <span>✓ {completedReturns} submissions</span>
+          <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-500 flex-wrap">
+            <span className="whitespace-nowrap">✓ {completedReturns} submissions</span>
             {client.tallyYears.length > 0 && (
-              <span>📊 Tally: {client.tallyYears.join(', ')}</span>
+              <span className="whitespace-nowrap">📊 Tally: {client.tallyYears.join(', ')}</span>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Actions: always visible on mobile, hover-reveal on desktop */}
+        <div className="flex flex-col items-end gap-1 flex-shrink-0 sm:opacity-0 sm:group-hover:opacity-100 sm:transition-opacity">
           <button
             onClick={() => onViewFilings(client)}
-            className="btn-ghost text-xs py-1 px-2"
+            className="btn-ghost text-xs py-1 px-2 whitespace-nowrap"
             title="View filings"
           >
             📋 Filings
           </button>
-          <button onClick={() => onEdit(client)} className="btn-ghost text-xs py-1 px-2" title="Edit">✏️</button>
-          <button onClick={() => onDelete(client.id)} className="btn-ghost text-xs py-1 px-2 hover:text-red-400" title="Delete">🗑</button>
+          <div className="flex gap-1">
+            <button onClick={() => onEdit(client)} className="btn-ghost text-xs py-1 px-2" title="Edit">✏️</button>
+            <button onClick={() => onDelete(client.id)} className="btn-ghost text-xs py-1 px-2 hover:text-red-400" title="Delete">🗑</button>
+          </div>
         </div>
       </div>
     </div>
