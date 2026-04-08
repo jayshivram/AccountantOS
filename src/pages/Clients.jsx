@@ -396,7 +396,7 @@ function ClientForm({ initial, isOpen, onClose, onSave }) {
 
 // ─── Client Row ───────────────────────────────────────────────────────────────
 
-function ClientRow({ client, onEdit, onDelete, onViewFilings }) {
+function ClientRow({ client, onEdit, onDelete, onViewFilings, onToggleHidden }) {
   const { state } = useApp();
 
   // Count completed returns across all active periods/types
@@ -409,12 +409,15 @@ function ClientRow({ client, onEdit, onDelete, onViewFilings }) {
   ).length;
 
   return (
-    <div className="card p-4 hover:border-gray-700 transition-all group">
+    <div className={cn('card p-4 hover:border-gray-700 transition-all group', client.hidden ? 'opacity-50' : '')}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
             <h3 className="font-bold text-gray-800 dark:text-gray-100 text-sm truncate">{client.name}</h3>
-            {pendingTasks > 0 && (
+            {client.hidden && (
+              <span className="badge bg-gray-700/60 text-gray-400 border border-gray-600/40 text-[10px] flex-shrink-0">hidden</span>
+            )}
+            {pendingTasks > 0 && !client.hidden && (
               <span className="badge bg-amber-900/40 text-amber-300 border border-amber-700/40 text-[10px] flex-shrink-0">
                 {pendingTasks} task{pendingTasks > 1 ? 's' : ''}
               </span>
@@ -443,6 +446,13 @@ function ClientRow({ client, onEdit, onDelete, onViewFilings }) {
             📋 Filings
           </button>
           <div className="flex gap-1">
+            <button
+              onClick={() => onToggleHidden(client.id)}
+              className="btn-ghost text-xs py-1 px-2"
+              title={client.hidden ? 'Unhide client' : 'Hide client'}
+            >
+              {client.hidden ? '👁' : '🙈'}
+            </button>
             <button onClick={() => onEdit(client)} className="btn-ghost text-xs py-1 px-2" title="Edit">✏️</button>
             <button onClick={() => onDelete(client.id)} className="btn-ghost text-xs py-1 px-2 hover:text-red-400" title="Delete">🗑</button>
           </div>
@@ -460,23 +470,27 @@ export default function Clients() {
 
   const [search, setSearch]       = useState('');
   const [filterType, setFilterType] = useState('ALL');
+  const [showHidden, setShowHidden] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [filingClient, setFilingClient] = useState(null);
 
+  const hiddenCount = useMemo(() => clients.filter(c => c.hidden).length, [clients]);
+
   const filtered = useMemo(() => {
     return clients.filter(c => {
+      if (!showHidden && c.hidden) return false;
       const matchSearch = c.name.toLowerCase().includes(search.toLowerCase());
       const matchType  = filterType === 'ALL' || c.taxTypes.includes(filterType);
       return matchSearch && matchType;
     });
-  }, [clients, search, filterType]);
+  }, [clients, search, filterType, showHidden]);
 
-  // Stats by tax type
+  // Stats by tax type (count only visible clients)
   const typeCounts = useMemo(() => {
     const counts = {};
-    TAX_TYPE_KEYS.forEach(t => { counts[t] = clients.filter(c => c.taxTypes.includes(t)).length; });
+    TAX_TYPE_KEYS.forEach(t => { counts[t] = clients.filter(c => !c.hidden && c.taxTypes.includes(t)).length; });
     return counts;
   }, [clients]);
 
@@ -492,17 +506,35 @@ export default function Clients() {
     dispatch({ type: 'DELETE_CLIENT', payload: id });
   }
 
+  function handleToggleHidden(id) {
+    dispatch({ type: 'TOGGLE_CLIENT_HIDDEN', payload: id });
+  }
+
   return (
     <div className="space-y-6 animate-fade-in min-w-0 overflow-x-hidden">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">Clients</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{clients.length} clients total</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {clients.filter(c => !c.hidden).length} clients
+            {hiddenCount > 0 && <span className="text-gray-600 dark:text-gray-600"> · {hiddenCount} hidden</span>}
+          </p>
         </div>
-        <button onClick={() => setShowAddForm(true)} className="btn-primary">
-          + Add Client
-        </button>
+        <div className="flex items-center gap-2">
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setShowHidden(v => !v)}
+              className={cn('btn-secondary text-xs px-3 py-1.5', showHidden ? 'border-blue-500 text-blue-400' : '')}
+              title={showHidden ? 'Hide hidden clients' : 'Show hidden clients'}
+            >
+              {showHidden ? '👁 Hide Hidden' : `🙈 Show Hidden (${hiddenCount})`}
+            </button>
+          )}
+          <button onClick={() => setShowAddForm(true)} className="btn-primary">
+            + Add Client
+          </button>
+        </div>
       </div>
 
       {/* Tax Type Summary Cards */}
@@ -563,6 +595,7 @@ export default function Clients() {
               onEdit={setEditingClient}
               onDelete={setDeletingId}
               onViewFilings={setFilingClient}
+              onToggleHidden={handleToggleHidden}
             />
           ))}
         </div>

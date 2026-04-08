@@ -9,7 +9,7 @@ import TallyTracker from './pages/TallyTracker.jsx';
 import FocusMode    from './pages/FocusMode.jsx';
 import ExportPage   from './pages/Export.jsx';
 import {
-  exportData, importData, requestNotificationPermission, cn,
+  exportData, importData, requestNotificationPermission, cn, getLastSyncTs,
 } from './utils/index.js';
 import { isInstallable, promptInstall, isRunningStandalone, clearAppCache } from './lib/pwa.js';
 import { Toggle, Modal, BatteryWidget, LiveClock } from './components/UI.jsx';
@@ -78,15 +78,37 @@ const Icons = {
 
 function SyncBadge() {
   const status = useSyncStatus();
+  const [, tick] = useState(0);
+
+  // Re-render every 30 s so the relative time stays fresh
+  useEffect(() => {
+    const id = setInterval(() => tick(n => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   if (!status || status === 'idle') return null;
+
   const map = {
     syncing: { dot: 'bg-blue-500 animate-pulse', text: 'Syncing…',  cls: 'text-blue-600 dark:text-blue-400' },
     synced:  { dot: 'bg-green-500',              text: '\u2713 Synced',  cls: 'text-green-600 dark:text-green-400' },
     error:   { dot: 'bg-red-500',                text: '\u26a0 Sync err', cls: 'text-red-600 dark:text-red-400'   },
   };
   const { dot, text, cls } = map[status] || map.synced;
+
+  // Build tooltip
+  let tooltip = text;
+  if (status === 'synced') {
+    const ts = getLastSyncTs();
+    if (ts) {
+      const diffSec = Math.round((Date.now() - ts) / 1000);
+      if (diffSec < 60)           tooltip = `Last synced ${diffSec}s ago`;
+      else if (diffSec < 3600)    tooltip = `Last synced ${Math.round(diffSec / 60)}m ago`;
+      else                        tooltip = `Last synced ${Math.round(diffSec / 3600)}h ago`;
+    }
+  }
+
   return (
-    <div className={cn('flex items-center gap-1.5 text-xs font-medium', cls)}>
+    <div className={cn('flex items-center gap-1.5 text-xs font-medium cursor-default', cls)} title={tooltip}>
       <span className={cn('w-2 h-2 rounded-full flex-shrink-0', dot)} />
       <span className="hidden sm:inline">{text}</span>
     </div>

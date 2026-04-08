@@ -49,6 +49,8 @@ function reducer(state, action) {
       return { ...state, clients: [...state.clients, { ...action.payload, id: uuid() }] };
     case 'EDIT_CLIENT':
       return { ...state, clients: state.clients.map(c => c.id === action.payload.id ? action.payload : c) };
+    case 'TOGGLE_CLIENT_HIDDEN':
+      return { ...state, clients: state.clients.map(c => c.id === action.payload ? { ...c, hidden: !c.hidden } : c) };
     case 'DELETE_CLIENT':
       return {
         ...state,

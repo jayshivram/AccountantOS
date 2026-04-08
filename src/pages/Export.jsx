@@ -8,6 +8,11 @@ const MONTH_NAMES = [
   'July','August','September','October','November','December',
 ];
 
+// Detect mobile browsers where window.print() is unreliable
+function isMobileBrowser() {
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+}
+
 // ─── Cell renderers ───────────────────────────────────────────────────────────
 
 function CellVal({ value }) {
@@ -32,6 +37,10 @@ export default function ExportPage() {
   const [year,  setYear]       = useState(now.getFullYear());
   const [month, setMonth]      = useState(now.getMonth()); // 0-indexed
   const [filterType, setFilterType] = useState('ALL');
+  const [showHidden, setShowHidden] = useState(false);
+  const [printToast, setPrintToast] = useState(false);
+
+  const hiddenCount = useMemo(() => clients.filter(c => c.hidden).length, [clients]);
 
   // Derived period strings
   const monthPeriod   = `${year}-${String(month).padStart(2, '0')}`;
@@ -43,6 +52,7 @@ export default function ExportPage() {
   const rows = useMemo(() => {
     const result = [];
     for (const client of clients) {
+      if (!showHidden && client.hidden) continue;
       for (const taxType of TAX_TYPE_KEYS) {
         if (!client.taxTypes.includes(taxType)) continue;
         if (filterType !== 'ALL' && taxType !== filterType) continue;
@@ -142,10 +152,27 @@ export default function ExportPage() {
     URL.revokeObjectURL(url);
   }
 
+  // ── Print ─────────────────────────────────────────────────────────────────
+  function handlePrint() {
+    if (isMobileBrowser()) {
+      // On mobile, trigger print anyway but also show a helpful hint
+      setPrintToast(true);
+      setTimeout(() => setPrintToast(false), 5000);
+    }
+    window.print();
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-5">
+
+      {/* Mobile print hint toast */}
+      {printToast && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-gray-800 dark:bg-gray-700 border border-gray-600 text-white text-xs rounded-xl px-4 py-3 shadow-xl max-w-xs text-center animate-fade-in" data-no-print>
+          📄 On mobile: tap <strong>Share</strong> → <strong>Print</strong> in your browser menu if the dialog didn't appear.
+        </div>
+      )}
 
       {/* Page header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -167,13 +194,13 @@ export default function ExportPage() {
             Export CSV
           </button>
           <button
-            onClick={() => window.print()}
+            onClick={handlePrint}
             className="btn btn-secondary flex items-center gap-2 text-sm"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
             </svg>
-            Print
+            Print / Save PDF
           </button>
         </div>
       </div>
@@ -198,7 +225,7 @@ export default function ExportPage() {
         </div>
 
         {/* Tax type filter chips */}
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5 items-center">
           <button
             onClick={() => setFilterType('ALL')}
             className={cn(
@@ -224,6 +251,20 @@ export default function ExportPage() {
               {TAX_TYPES[t]}
             </button>
           ))}
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setShowHidden(v => !v)}
+              className={cn(
+                'text-xs px-3 py-1 rounded-full font-semibold border transition-all ml-auto',
+                showHidden
+                  ? 'bg-indigo-600 border-indigo-500 text-white'
+                  : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500'
+              )}
+              title={showHidden ? 'Click to hide hidden clients from report' : `Click to include ${hiddenCount} hidden client(s) in report`}
+            >
+              {showHidden ? `👁 Incl. Hidden (${hiddenCount})` : `🙈 ${hiddenCount} hidden`}
+            </button>
+          )}
         </div>
       </div>
 

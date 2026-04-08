@@ -292,7 +292,16 @@ export function BatteryWidget() {
     };
   }, []);
 
-  if (!battery.supported) return null;
+  if (!battery.supported) return (
+    <div className="flex items-center gap-1 text-gray-400 dark:text-gray-600" title="Battery level unavailable on this browser">
+      <svg className="w-5 h-3" viewBox="0 0 20 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <rect x="0.75" y="0.75" width="17" height="10.5" rx="1.5" />
+        <rect x="18" y="3.5" width="1.5" height="5" rx="0.75" fill="currentColor" stroke="none" opacity="0.5" />
+        <line x1="7" y1="3" x2="13" y2="9" strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="13" y1="3" x2="7" y2="9" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    </div>
+  );
 
   const pct = Math.round(battery.level * 100);
   const isLow      = pct <= 20;

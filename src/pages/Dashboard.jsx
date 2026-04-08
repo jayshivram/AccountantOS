@@ -154,7 +154,8 @@ function QuickStats() {
     return all.filter(d => state.clients.some(c => c.taxTypes.includes(d.type)));
   }, [state.clients]);
 
-  const totalClients   = state.clients.length;
+  const totalClients   = state.clients.filter(c => !c.hidden).length;
+  const hiddenClients  = state.clients.filter(c => c.hidden).length;
   const pendingTasks   = state.tasks.filter(t => t.status !== 'completed').length;
   const today          = new Date().toISOString().slice(0, 10);
   // Count truly overdue deadlines: past due AND at least one client still pending
@@ -168,8 +169,10 @@ function QuickStats() {
   }).length;
   const completedToday = state.tasks.filter(t => t.completedAt && t.completedAt.slice(0, 10) === today).length;
 
+  const clientLabel = hiddenClients > 0 ? `Clients (${hiddenClients} hidden)` : 'Total Clients';
+
   const stats = [
-    { label: 'Total Clients', value: totalClients,     icon: '👥', color: 'text-blue-600 dark:text-blue-400' },
+    { label: clientLabel,     value: totalClients,     icon: '👥', color: 'text-blue-600 dark:text-blue-400' },
     { label: 'Pending Tasks', value: pendingTasks,     icon: '📋', color: 'text-amber-600 dark:text-amber-400' },
     { label: 'Overdue',       value: overdueDeadlines, icon: '⚠️', color: overdueDeadlines > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400' },
     { label: 'Done Today',    value: completedToday,   icon: '✅', color: 'text-green-600 dark:text-green-400' },
@@ -232,12 +235,14 @@ function ClientHeatmap({ deadlines }) {
                 key={c.id}
                 className={cn(
                   'px-3 py-2 rounded-lg text-xs font-medium border transition-all',
-                  done
+                  c.hidden
+                    ? 'opacity-40 bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500'
+                    : done
                     ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700/50 text-green-700 dark:text-green-300'
                     : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400'
                 )}
               >
-                <span className="mr-1">{done ? '✓' : '○'}</span>
+                <span className="mr-1">{c.hidden ? '🙈' : done ? '✓' : '○'}</span>
                 {c.name}
               </div>
             );
@@ -319,7 +324,7 @@ export default function Dashboard({ onNavigate }) {
     return !(due.getMonth() === currentMonth && due.getFullYear() === currentYear);
   }), [deadlines, currentMonth, currentYear]);
 
-  const [collapsed, setCollapsed] = useState({ overdue: false, current: false, upcoming: false });
+  const [collapsed, setCollapsed] = useState({ overdue: false, current: true, upcoming: true });
   const toggle = (key) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
 
   const today = format(new Date(), 'EEEE, dd MMMM yyyy');
