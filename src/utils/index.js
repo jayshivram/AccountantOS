@@ -360,10 +360,13 @@ export function getCalendarDays(year, month) {
 // ─── Storage ──────────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'accountant-os-v1';
+const SYNC_TS_KEY = 'accountant-os-sync-ts'; // separate key — only written after confirmed push/pull
 
 export function saveState(state) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, _syncedAt: Date.now() }));
+    // Strip any legacy _syncedAt that leaked into state — sync tracking is now in SYNC_TS_KEY
+    const { _syncedAt, ...clean } = state;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
   } catch (e) {
     console.warn('Failed to save state', e);
   }
@@ -372,10 +375,22 @@ export function saveState(state) {
 export function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const { _syncedAt, ...clean } = JSON.parse(raw); // strip legacy field if present
+    return clean;
   } catch (e) {
     return null;
   }
+}
+
+/** Returns the timestamp (ms) of the last confirmed sync with Supabase. 0 = never. */
+export function getLastSyncTs() {
+  try { return parseInt(localStorage.getItem(SYNC_TS_KEY) || '0', 10); } catch { return 0; }
+}
+
+/** Call after a successful push or pull to record the server timestamp. */
+export function setLastSyncTs(tsMs) {
+  try { localStorage.setItem(SYNC_TS_KEY, String(tsMs)); } catch { /* ignore */ }
 }
 
 export function exportData(state) {

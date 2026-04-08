@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef, useState, useCallback } from 'react';
 import { INITIAL_CLIENTS, INITIAL_TAX_RETURNS, INITIAL_TASKS } from '../data/initialData.js';
-import { saveState, loadState, uuid, getUpcomingDeadlines, checkAndNotify } from '../utils/index.js';
+import { saveState, loadState, uuid, getUpcomingDeadlines, checkAndNotify, getLastSyncTs, setLastSyncTs } from '../utils/index.js';
 import { supabase, SYNC_ROW_ID } from '../lib/supabase.js';
 
 // ─── Initial State ─────────────────────────────────────────────────────────────
@@ -159,17 +159,8 @@ export function AppProvider({ children }) {
         .from('app_state')
         .upsert({ id: SYNC_ROW_ID, data, updated_at: updatedAt });
       if (!error) {
-        // Record the exact remote timestamp so startup pull knows we're already in sync
-        try {
-          const raw = localStorage.getItem('accountant-os-v1');
-          if (raw) {
-            const stored = JSON.parse(raw);
-            localStorage.setItem('accountant-os-v1', JSON.stringify({
-              ...stored,
-              _syncedAt: new Date(updatedAt).getTime(),
-            }));
-          }
-        } catch { /* ignore */ }
+        // Record the server timestamp so the pull comparison knows we're in sync
+        setLastSyncTs(new Date(updatedAt).getTime());
       }
       setSyncStatus(error ? 'error' : 'synced');
     } catch {
@@ -221,14 +212,14 @@ export function AppProvider({ children }) {
           .single();
 
         if (!error && rows?.data) {
-          // Use remote data if it's newer than what's in localStorage
-          const localRaw = localStorage.getItem('accountant-os-v1');
-          const localUpdated = localRaw ? JSON.parse(localRaw)?._syncedAt || 0 : 0;
+          // Remote wins if it was updated after our last confirmed sync
+          const lastSync = getLastSyncTs();
           const remoteUpdated = new Date(rows.updated_at).getTime();
 
-          if (remoteUpdated > localUpdated) {
+          if (remoteUpdated > lastSync) {
             skipPushRef.current = true;
             dispatch({ type: 'IMPORT_DATA', payload: rows.data });
+            setLastSyncTs(remoteUpdated); // record that we're now in sync with this version
             checkAndNotify(rows.data, getUpcomingDeadlines(365));
           } else {
             checkAndNotify(stateRef.current, getUpcomingDeadlines(365));
@@ -256,6 +247,7 @@ export function AppProvider({ children }) {
           if (payload.new?.data) {
             skipPushRef.current = true;
             dispatch({ type: 'IMPORT_DATA', payload: payload.new.data });
+            setLastSyncTs(Date.now());
             setSyncStatus('synced');
           }
         }
