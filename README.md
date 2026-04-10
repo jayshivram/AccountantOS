@@ -15,7 +15,7 @@ Designed for accountants managing multiple clients, tax deadlines, and ADHD-frie
 - **Export / Import** — JSON backup of all your data
 - **Keyboard Shortcuts** — `D` = mark task done, `N` = new task
 - **Dark Mode** — Default dark theme, togglable in Settings
-- **No backend needed** — All data stored in your browser's localStorage
+- **Team Collaboration** — User authentication and real-time syncing across devices via Supabase. Data is pushed to your personal cloud row automatically.
 
 ## Tax Deadline Rules
 
@@ -55,3 +55,17 @@ Then open **http://localhost:5173** in your browser.
 
 Use **Settings → Export JSON Backup** regularly to save your data.
 To restore, use **Settings → Import JSON Backup**.
+
+## Supabase Setup (Manual Steps)
+
+You need to do this in your Supabase dashboard before going live or inviting your team:
+
+1. **Authentication → Providers**: Enable the Email provider.
+2. **Authentication → Users**: Click "Invite User" (or "Add User") for each team member. This keeps the app closed and invite-only.
+3. **Table Editor → app_state → RLS**: Enable Row Level Security (RLS) on the `app_state` table. Add these two policies:
+   - **SELECT**: `auth.role() = 'authenticated'`
+   - **INSERT/UPDATE (upsert)**: `auth.role() = 'authenticated'`
+   
+   This locks the database so only your logged-in team can read or write any data.
+
+> **Data migration note**: The first time each user logs in, their existing `localStorage` data will automatically push up to their new personal row in Supabase — no manual migration needed.

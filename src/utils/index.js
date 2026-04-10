@@ -383,6 +383,15 @@ export function loadState() {
   }
 }
 
+export function clearState() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(SYNC_TS_KEY);
+  } catch (e) {
+    console.warn('Failed to clear state', e);
+  }
+}
+
 /** Returns the timestamp (ms) of the last confirmed sync with Supabase. 0 = never. */
 export function getLastSyncTs() {
   try { return parseInt(localStorage.getItem(SYNC_TS_KEY) || '0', 10); } catch { return 0; }

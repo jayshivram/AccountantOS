@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp, useSyncStatus } from './context/AppContext.jsx';
-import Dashboard    from './pages/Dashboard.jsx';
-import Clients      from './pages/Clients.jsx';
-import Tasks        from './pages/Tasks.jsx';
-import Calendar     from './pages/Calendar.jsx';
-import History      from './pages/History.jsx';
-import TallyTracker from './pages/TallyTracker.jsx';
-import FocusMode    from './pages/FocusMode.jsx';
-import ExportPage   from './pages/Export.jsx';
+import Dashboard      from './pages/Dashboard.jsx';
+import Clients        from './pages/Clients.jsx';
+import Tasks          from './pages/Tasks.jsx';
+import Calendar       from './pages/Calendar.jsx';
+import History        from './pages/History.jsx';
+import TallyTracker   from './pages/TallyTracker.jsx';
+import FocusMode      from './pages/FocusMode.jsx';
+import ExportPage     from './pages/Export.jsx';
+import Cancellations  from './pages/Cancellations.jsx';
+import Login          from './components/Login.jsx';
 import {
-  exportData, importData, requestNotificationPermission, cn, getLastSyncTs,
+  exportData, importData, requestNotificationPermission, cn, getLastSyncTs, clearState
 } from './utils/index.js';
 import { isInstallable, promptInstall, isRunningStandalone, clearAppCache } from './lib/pwa.js';
 import { Toggle, Modal, BatteryWidget, LiveClock } from './components/UI.jsx';
+import { supabase } from './lib/supabase.js';
 
 // ─── Nav Icons (inline SVG) ───────────────────────────────────────────────────
 
@@ -55,6 +58,16 @@ const Icons = {
   Export: () => (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
+  ),
+  Cancellations: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l2 2 4-4m-1-9H7a2 2 0 00-2 2v16a2 2 0 002 2h10a2 2 0 002-2V7l-4-4z" />
+    </svg>
+  ),
+  Logout: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
     </svg>
   ),
   Settings: () => (
@@ -133,7 +146,7 @@ function useInstallPWA() {
 }
 // ─── Settings Modal ───────────────────────────────────────────────────────────
 
-function SettingsModal({ isOpen, onClose }) {
+function SettingsModal({ isOpen, onClose, onLogout, userEmail }) {
   const { state, dispatch } = useApp();
   const { canInstall, install, isStandalone } = useInstallPWA();
   const [cacheCleared, setCacheCleared] = useState(false);
@@ -250,6 +263,27 @@ function SettingsModal({ isOpen, onClose }) {
           <p><kbd className="bg-gray-100 dark:bg-gray-800 px-1 rounded border border-gray-300 dark:border-gray-700">D</kbd> Mark selected task done</p>
           <p><kbd className="bg-gray-100 dark:bg-gray-800 px-1 rounded border border-gray-300 dark:border-gray-700">N</kbd> New task (on Tasks page)</p>
         </div>
+
+        <hr className="border-gray-200 dark:border-gray-800" />
+
+        {/* Signed-in user + logout */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/60 rounded-xl">
+            <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
+              {userEmail ? userEmail[0].toUpperCase() : '?'}
+            </div>
+            <span className="text-xs text-gray-700 dark:text-gray-300 truncate min-w-0">{userEmail}</span>
+          </div>
+          <button
+            onClick={() => { onClose(); onLogout(); }}
+            className="w-full flex items-center justify-center gap-2 py-2 px-4 text-sm font-medium rounded-xl
+              text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/50
+              hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+          >
+            <Icons.Logout />
+            Sign Out
+          </button>
+        </div>
       </div>
     </Modal>
   );
@@ -257,18 +291,19 @@ function SettingsModal({ isOpen, onClose }) {
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
-function Sidebar({ currentView, onNavigate, onSettings, mobileOpen, onMobileClose }) {
+function Sidebar({ currentView, onNavigate, onSettings, mobileOpen, onMobileClose, userEmail }) {
   const { state } = useApp();
 
   const navItems = [
-    { key: 'dashboard', label: 'Dashboard',     Icon: Icons.Dashboard },
-    { key: 'clients',   label: 'Clients',        Icon: Icons.Clients   },
-    { key: 'focus',     label: 'Focus Mode',     Icon: Icons.Focus     },
-    { key: 'calendar',  label: 'Calendar',       Icon: Icons.Calendar  },
-    { key: 'tasks',     label: 'Tasks',          Icon: Icons.Tasks     },
-    { key: 'tally',     label: 'Tally Tracker',  Icon: Icons.Tally     },
-    { key: 'history',   label: 'History',        Icon: Icons.History   },
-    { key: 'export',    label: 'Export',         Icon: Icons.Export    },
+    { key: 'dashboard',     label: 'Dashboard',      Icon: Icons.Dashboard     },
+    { key: 'clients',       label: 'Clients',         Icon: Icons.Clients       },
+    { key: 'focus',         label: 'Focus Mode',      Icon: Icons.Focus         },
+    { key: 'calendar',      label: 'Calendar',        Icon: Icons.Calendar      },
+    { key: 'tasks',         label: 'Tasks',           Icon: Icons.Tasks         },
+    { key: 'tally',         label: 'Tally Tracker',   Icon: Icons.Tally         },
+    { key: 'cancellations', label: 'Cancellations',   Icon: Icons.Cancellations },
+    { key: 'history',       label: 'History',         Icon: Icons.History       },
+    { key: 'export',        label: 'Export',          Icon: Icons.Export        },
   ];
 
   // Badge counts
@@ -325,11 +360,11 @@ function Sidebar({ currentView, onNavigate, onSettings, mobileOpen, onMobileClos
         </div>
       )}
 
-      {/* Settings */}
+      {/* Settings + user */}
       <div className="px-3 pb-4 border-t border-gray-200 dark:border-gray-800 pt-3">
         <button onClick={onSettings} className="nav-item-inactive w-full">
           <Icons.Settings />
-          <span>Settings</span>
+          <span>Settings &amp; Logout</span>
         </button>
         <p className="text-[10px] text-gray-400 dark:text-gray-600 text-center mt-3">Created by Jay Shivram · v1.0 · Cloud synced</p>
       </div>
@@ -364,7 +399,7 @@ function Sidebar({ currentView, onNavigate, onSettings, mobileOpen, onMobileClos
 
 // ─── Main App Shell ───────────────────────────────────────────────────────────
 
-function AppShell() {
+function AppShell({ onLogout, userEmail }) {
   const { state, dispatch } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -387,14 +422,15 @@ function AppShell() {
 
   // Page titles
   const titles = {
-    dashboard: 'Dashboard',
-    clients:   'Clients',
-    calendar:  'Calendar',
-    tasks:     'Tasks',
-    history:   'History',
-    tally:     'Tally Tracker',
-    focus:     'Focus Mode',
-    export:    'Export',
+    dashboard:     'Dashboard',
+    clients:       'Clients',
+    calendar:      'Calendar',
+    tasks:         'Tasks',
+    history:       'History',
+    tally:         'Tally Tracker',
+    focus:         'Focus Mode',
+    export:        'Export',
+    cancellations: 'Cancellations',
   };
 
   // Render current page
@@ -407,8 +443,9 @@ function AppShell() {
       case 'history':   return <History />;
       case 'tally':     return <TallyTracker />;
       case 'focus':     return <FocusMode onNavigate={navigate} />;
-      case 'export':    return <ExportPage />;
-      default:          return <Dashboard onNavigate={navigate} />;
+      case 'export':        return <ExportPage />;
+      case 'cancellations': return <Cancellations />;
+      default:              return <Dashboard onNavigate={navigate} />;
     }
   }
 
@@ -420,6 +457,7 @@ function AppShell() {
         onSettings={() => setSettingsOpen(true)}
         mobileOpen={mobileMenuOpen}
         onMobileClose={() => setMobileMenuOpen(false)}
+        userEmail={userEmail}
       />
 
       {/* Main content */}
@@ -495,7 +533,30 @@ function AppShell() {
         </main>
       </div>
 
-      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onLogout={onLogout}
+        userEmail={userEmail}
+      />
+    </div>
+  );
+}
+
+// ─── Auth Loading Screen ──────────────────────────────────────────────────────
+
+function AuthLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-950">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center animate-pulse">
+          <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+              d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <p className="text-sm text-gray-500">Loading AccountantOS…</p>
+      </div>
     </div>
   );
 }
@@ -503,9 +564,36 @@ function AppShell() {
 // ─── Root ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const [session, setSession]       = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    // Check for an existing session on first load
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    // Subscribe to auth changes (login / logout from any tab)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (authLoading) return <AuthLoader />;
+  if (!session)   return <Login />;
+
+  const handleLogout = () => {
+    clearState();
+    supabase.auth.signOut();
+  };
+
   return (
-    <AppProvider>
-      <AppShell />
+    <AppProvider userId={session.user.id} userEmail={session.user.email}>
+      <AppShell onLogout={handleLogout} userEmail={session.user.email} />
     </AppProvider>
   );
 }
