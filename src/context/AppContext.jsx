@@ -213,6 +213,41 @@ export function AppProvider({ userId, userEmail, children }) {
   // ── Keep stateRef current ──
   useEffect(() => { stateRef.current = state; }, [state]);
 
+  // ── Pull personal data (reusable) ───────────────────────────────────────────
+  const pullPersonalData = useCallback(async () => {
+    isPullingRef.current = true;
+    setSyncStatus('syncing');
+    try {
+      const { data: rows, error } = await supabase
+        .from('app_state')
+        .select('data, updated_at')
+        .eq('id', userId)
+        .single();
+
+      if (!error && rows?.data) {
+        const lastSync      = getLastSyncTs();
+        const remoteUpdated = new Date(rows.updated_at).getTime();
+        
+        // Always import if remote is newer, OR if we don't have a reliable lastSync recorded
+        if (remoteUpdated > lastSync) {
+          skipPushRef.current = true;
+          dispatch({ type: 'IMPORT_DATA', payload: rows.data });
+          setLastSyncTs(remoteUpdated);
+          checkAndNotify(rows.data, getUpcomingDeadlines(365));
+        } else {
+          checkAndNotify(stateRef.current, getUpcomingDeadlines(365));
+        }
+      } else {
+        checkAndNotify(stateRef.current, getUpcomingDeadlines(365));
+      }
+      setSyncStatus('synced');
+    } catch {
+      setSyncStatus('error');
+    } finally {
+      isPullingRef.current = false;
+    }
+  }, [userId]);
+
   // ── Push personal data to Supabase (row keyed by userId) ────────────────────
   const pushPersonalData = useCallback(async (data) => {
     setSyncStatus('syncing');
@@ -240,6 +275,37 @@ export function AppProvider({ userId, userEmail, children }) {
         });
     } catch { /* silent */ }
   }, []);
+
+  // ── Manual Sync Trigger ──────────────────────────────────────────────────────
+  const manualSync = useCallback(async () => {
+    setSyncStatus('syncing');
+    try {
+      // 1. Pull check
+      const { data: rows, error } = await supabase.from('app_state').select('data, updated_at').eq('id', userId).single();
+      if (!error && rows?.data) {
+        const lastSync = getLastSyncTs();
+        const remoteUpdated = new Date(rows.updated_at).getTime();
+        // Always import if remote is newer
+        if (remoteUpdated > lastSync) {
+           skipPushRef.current = true;
+           dispatch({ type: 'IMPORT_DATA', payload: rows.data });
+           setLastSyncTs(remoteUpdated);
+           setSyncStatus('synced');
+           return;
+        }
+      }
+      
+      // 2. If we reach here, local is newer or equal. Push local to Supabase.
+      const { currentView, currentMonth, cancellations, ...personalData } = stateRef.current;
+      await pushPersonalData(personalData);
+      await pushCancellations(cancellations);
+      
+      // Force pull again just to ensure UI reflects 'synced' and everything is green
+      pullPersonalData();
+    } catch {
+       setSyncStatus('error');
+    }
+  }, [userId, pushPersonalData, pushCancellations, pullPersonalData]);
 
   // ── Persist to localStorage + schedule personal Supabase push ───────────────
   useEffect(() => {
@@ -272,46 +338,15 @@ export function AppProvider({ userId, userEmail, children }) {
         pushPersonalData(personalData);
         pushCancellations(cancellations);
       } else if (document.visibilityState === 'visible') {
-        checkAndNotify(stateRef.current, getUpcomingDeadlines(365));
+        pullPersonalData();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [pushPersonalData, pushCancellations]);
+  }, [pushPersonalData, pushCancellations, pullPersonalData]);
 
   // ── On mount: pull personal data + real-time subscribe ──────────────────────
   useEffect(() => {
-    async function pullPersonalData() {
-      setSyncStatus('syncing');
-      try {
-        const { data: rows, error } = await supabase
-          .from('app_state')
-          .select('data, updated_at')
-          .eq('id', userId)
-          .single();
-
-        if (!error && rows?.data) {
-          const lastSync      = getLastSyncTs();
-          const remoteUpdated = new Date(rows.updated_at).getTime();
-          if (remoteUpdated > lastSync) {
-            skipPushRef.current = true;
-            dispatch({ type: 'IMPORT_DATA', payload: rows.data });
-            setLastSyncTs(remoteUpdated);
-            checkAndNotify(rows.data, getUpcomingDeadlines(365));
-          } else {
-            checkAndNotify(stateRef.current, getUpcomingDeadlines(365));
-          }
-        } else {
-          checkAndNotify(stateRef.current, getUpcomingDeadlines(365));
-        }
-        setSyncStatus('synced');
-      } catch {
-        setSyncStatus('error');
-      } finally {
-        isPullingRef.current = false;
-      }
-    }
-
     pullPersonalData();
 
     const personalChannel = supabase
@@ -373,7 +408,7 @@ export function AppProvider({ userId, userEmail, children }) {
 
   return (
     <SyncContext.Provider value={syncStatus}>
-      <AppContext.Provider value={{ state, dispatch, userId, userEmail }}>
+      <AppContext.Provider value={{ state, dispatch, userId, userEmail, manualSync }}>
         {children}
       </AppContext.Provider>
     </SyncContext.Provider>

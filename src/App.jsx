@@ -120,11 +120,18 @@ function SyncBadge() {
     }
   }
 
+  const { manualSync } = useApp();
+
   return (
-    <div className={cn('flex items-center gap-1.5 text-xs font-medium cursor-default', cls)} title={tooltip}>
+    <button 
+      onClick={manualSync}
+      disabled={status === 'syncing'}
+      className={cn('flex items-center gap-1.5 text-xs font-medium cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-800 px-2 py-1 rounded transition-colors', cls, status === 'syncing' && 'opacity-75 cursor-wait')} 
+      title={tooltip + " (Click to force sync)"}
+    >
       <span className={cn('w-2 h-2 rounded-full flex-shrink-0', dot)} />
       <span className="hidden sm:inline">{text}</span>
-    </div>
+    </button>
   );
 }// ─── PWA Install Hook ───────────────────────────────────────────────────────────────
 
