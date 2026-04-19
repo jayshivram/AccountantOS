@@ -1,15 +1,164 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+﻿import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp, useClients } from '../context/AppContext.jsx';
 import {
   TAX_TYPES, TAX_TYPE_KEYS, uuid, cn, daysUntil, formatDate,
-  TASK_STATUS, PRIORITY, getPriorityColor, getStatusColor,
+  TASK_STATUS, PRIORITY, getStatusColor,
 } from '../utils/index.js';
 import {
   Modal, ConfirmDialog, TaxTypeBadge, StatusBadge, CountdownBadge,
   EmptyState, KeyboardHint,
 } from '../components/UI.jsx';
 
-// ─── Task Form ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ ISO Week Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function getMondayOfISOWeek(year, week) {
+  const jan4      = new Date(year, 0, 4);
+  const dow       = jan4.getDay() || 7;
+  const week1Mon  = new Date(jan4);
+  week1Mon.setDate(jan4.getDate() - dow + 1);
+  const monday    = new Date(week1Mon);
+  monday.setDate(week1Mon.getDate() + (week - 1) * 7);
+  return monday;
+}
+
+function isoWeeksInYear(year) {
+  const dec28    = new Date(year, 11, 28);
+  const dow      = dec28.getDay() || 7;
+  const lastMon  = new Date(dec28);
+  lastMon.setDate(dec28.getDate() - dow + 1);
+  const jan4     = new Date(year, 0, 4);
+  const dow4     = jan4.getDay() || 7;
+  const week1Mon = new Date(jan4);
+  week1Mon.setDate(jan4.getDate() - dow4 + 1);
+  return Math.round((lastMon - week1Mon) / 604800000) + 1;
+}
+
+function currentISOWeek() {
+  const today    = new Date();
+  const dow      = today.getDay() || 7;
+  const thu      = new Date(today);
+  thu.setDate(today.getDate() - dow + 4);
+  const year     = thu.getFullYear();
+  const jan4     = new Date(year, 0, 4);
+  const dow4     = jan4.getDay() || 7;
+  const week1Mon = new Date(jan4);
+  week1Mon.setDate(jan4.getDate() - dow4 + 1);
+  const week     = Math.round((thu - week1Mon) / 604800000) + 1;
+  return { week, year };
+}
+
+function getISOWeekOfDate(dateStr) {
+  if (!dateStr) return null;
+  const d        = new Date(dateStr + 'T00:00:00');
+  const dow      = d.getDay() || 7;
+  const thu      = new Date(d);
+  thu.setDate(d.getDate() - dow + 4);
+  const year     = thu.getFullYear();
+  const jan4     = new Date(year, 0, 4);
+  const dow4     = jan4.getDay() || 7;
+  const week1Mon = new Date(jan4);
+  week1Mon.setDate(jan4.getDate() - dow4 + 1);
+  const week     = Math.round((thu - week1Mon) / 604800000) + 1;
+  return { week, year };
+}
+
+function getWeeksForMonth(year, month) {
+  const total  = isoWeeksInYear(year);
+  const result = [];
+  for (let w = 1; w <= total; w++) {
+    const mon = getMondayOfISOWeek(year, w);
+    if (mon.getFullYear() === year && mon.getMonth() === month) {
+      const sun = new Date(mon);
+      sun.setDate(mon.getDate() + 6);
+      result.push({ week: w, mon, sun });
+    }
+  }
+  return result;
+}
+
+function fmtShortDate(d) {
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// â”€â”€â”€ Quick Jump Picker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function QuickJumpPicker({ currentYear, currentWeek, onNavigate, onClose }) {
+  const [pickerYear, setPickerYear]       = useState(currentYear);
+  const [selectedMonth, setSelectedMonth] = useState(null);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handlePointer(e) {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    }
+    document.addEventListener('mousedown', handlePointer);
+    return () => document.removeEventListener('mousedown', handlePointer);
+  }, [onClose]);
+
+  const weeksForMonth = useMemo(
+    () => selectedMonth !== null ? getWeeksForMonth(pickerYear, selectedMonth) : [],
+    [pickerYear, selectedMonth]
+  );
+
+  return (
+    <div
+      ref={ref}
+      className="absolute z-50 top-full mt-2 left-1/2 -translate-x-1/2 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl p-4"
+    >
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={() => { setPickerYear(y => y - 1); setSelectedMonth(null); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+        </button>
+        <span className="font-bold text-sm text-gray-900 dark:text-white">{pickerYear}</span>
+        <button onClick={() => { setPickerYear(y => y + 1); setSelectedMonth(null); }} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 transition">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+        </button>
+      </div>
+      <div className="grid grid-cols-4 gap-1 mb-1">
+        {MONTHS_SHORT.map((m, i) => (
+          <button
+            key={m}
+            onClick={() => setSelectedMonth(i === selectedMonth ? null : i)}
+            className={cn(
+              'py-1.5 text-xs font-semibold rounded-lg transition',
+              selectedMonth === i
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600'
+            )}
+          >{m}</button>
+        ))}
+      </div>
+      {selectedMonth !== null ? (
+        <div className="border-t border-gray-100 dark:border-gray-800 mt-3 pt-3 space-y-0.5 max-h-44 overflow-y-auto">
+          {weeksForMonth.length === 0
+            ? <p className="text-xs text-gray-400 text-center py-2">No weeks</p>
+            : weeksForMonth.map(({ week: w, mon, sun }) => (
+              <button
+                key={w}
+                onClick={() => { onNavigate(pickerYear, w); onClose(); }}
+                className={cn(
+                  'w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition',
+                  currentYear === pickerYear && currentWeek === w
+                    ? 'bg-blue-600 text-white'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
+                )}
+              >
+                <span className="font-bold">Wk {w}</span>
+                <span className="opacity-70 tabular-nums">{fmtShortDate(mon)} – {fmtShortDate(sun)}</span>
+              </button>
+            ))
+          }
+        </div>
+      ) : (
+        <p className="text-[11px] text-gray-400 text-center mt-2">Pick a month to browse its weeks</p>
+      )}
+    </div>
+  );
+}
+
+// â”€â”€â”€ Task Form â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TaskForm({ initial, isOpen, onClose, onSave, clients }) {
   const today = new Date().toISOString().slice(0, 10);
@@ -69,14 +218,14 @@ function TaskForm({ initial, isOpen, onClose, onSave, clients }) {
           <div>
             <label className="label">Client (optional)</label>
             <select className="input" value={form.clientId || ''} onChange={e => set('clientId', e.target.value)}>
-              <option value="">— General Task —</option>
+              <option value="">– General Task –</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div>
             <label className="label">Tax Type (optional)</label>
             <select className="input" value={form.taxType || ''} onChange={e => set('taxType', e.target.value)}>
-              <option value="">— None —</option>
+              <option value="">– None –</option>
               {TAX_TYPE_KEYS.map(t => <option key={t} value={t}>{TAX_TYPES[t]}</option>)}
             </select>
           </div>
@@ -120,174 +269,290 @@ function TaskForm({ initial, isOpen, onClose, onSave, clients }) {
   );
 }
 
-// ─── Task Card ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Task Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function TaskCard({ task, clients, onEdit, onDelete, onComplete, onReopen, selected, onSelect }) {
+function TaskRow({ task, clients, onEdit, onDelete, onComplete, onReopen, selected, onSelect }) {
   const client = clients.find(c => c.id === task.clientId);
   const days   = task.dueDate ? daysUntil(task.dueDate) : null;
   const isDone = task.status === 'completed';
 
-  const priorityBorder = {
+  const priorityChip = {
+    high:   'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700/40',
+    medium: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700/40',
+    low:    'text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/40 border-gray-200 dark:border-gray-700/40',
+  };
+
+  const borderLeft = {
     high:   'border-l-red-500',
-    medium: 'border-l-amber-500',
-    low:    'border-l-gray-600',
+    medium: 'border-l-amber-400',
+    low:    'border-l-gray-400',
   };
 
   return (
-    <div
+    <tr
+      onClick={() => onSelect(task.id)}
       className={cn(
-        'card border-l-4 p-4 transition-all group hover:border-r-gray-700',
-        isDone ? 'opacity-60' : '',
-        priorityBorder[task.priority] || 'border-l-gray-600',
-        selected ? 'ring-2 ring-blue-500' : ''
+        'group border-b border-gray-100 dark:border-gray-800/80 transition-colors cursor-pointer border-l-4',
+        isDone ? 'opacity-55' : '',
+        selected ? 'bg-blue-50/60 dark:bg-blue-900/10' : 'hover:bg-gray-50 dark:hover:bg-gray-800/40',
+        borderLeft[task.priority] || 'border-l-gray-400'
       )}
     >
-      <div className="flex items-start gap-3">
-        {/* Checkbox */}
+      {/* Checkbox */}
+      <td className="pl-3 pr-1 py-3 w-8 align-middle">
         <button
-          onClick={() => isDone ? onReopen(task.id) : onComplete(task.id)}
-          title={isDone ? 'Reopen task' : 'Mark done (D)'}
+          onClick={e => { e.stopPropagation(); isDone ? onReopen(task.id) : onComplete(task.id); }}
+          title={isDone ? 'Reopen task' : 'Mark done'}
           className={cn(
-            'flex-shrink-0 mt-0.5 w-5 h-5 rounded border-2 transition-all flex items-center justify-center',
+            'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
             isDone
               ? 'bg-green-600 border-green-500 text-white'
-              : 'border-gray-600 hover:border-green-500 hover:bg-green-500/20'
+              : 'border-gray-400 hover:border-green-500 hover:bg-green-500/20'
           )}
         >
-          {isDone && <span className="text-xs text-white leading-none">✓</span>}
+          {isDone && <span className="text-[10px] text-white leading-none">âœ“</span>}
         </button>
+      </td>
 
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-start justify-between gap-2 mb-1">
-            <h3 className={cn('font-semibold text-sm', isDone ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-gray-100')}>
-              {task.title}
-            </h3>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {task.category && (
-                <span className="badge bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700/40 text-[10px]">
-                  {task.category}
-                </span>
-              )}
-              {task.taxType && <TaxTypeBadge type={task.taxType} size="xs" />}
-              {!isDone && days !== null && <CountdownBadge days={days} />}
-              {isDone && <StatusBadge status="completed" />}
-            </div>
-          </div>
-
+      {/* Title + description + category */}
+      <td className="px-3 py-2.5 align-middle">
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className={cn(
+            'font-semibold text-sm leading-snug',
+            isDone ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'
+          )}>
+            {task.title}
+          </span>
           {task.description && (
-            <p className="text-xs text-gray-500 mb-2 line-clamp-2">{task.description}</p>
+            <span className="text-xs text-gray-500 dark:text-gray-400 line-clamp-1">{task.description}</span>
           )}
-
-          <div className="flex items-center gap-3 text-xs text-gray-500">
-            {client && <span>👤 {client.name}</span>}
-            {task.dueDate && <span>📅 {formatDate(task.dueDate)}</span>}
-            <span className={getPriorityColor(task.priority)}>
-              {task.priority?.toUpperCase()} priority
+          {task.category && (
+            <span className="self-start text-[10px] font-semibold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700/40 leading-tight">
+              {task.category}
             </span>
-          </div>
+          )}
         </div>
+      </td>
 
-        {/* Actions */}
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={() => onEdit(task)} className="btn-ghost text-xs py-1 px-2">✏️</button>
-          <button onClick={() => onDelete(task.id)} className="btn-ghost text-xs py-1 px-2 hover:text-red-400">🗑</button>
+      {/* Client */}
+      <td className="px-3 py-2.5 w-36 align-middle">
+        <span className="text-xs text-gray-600 dark:text-gray-400 truncate block max-w-[130px]">
+          {client ? client.name : <span className="text-gray-300 dark:text-gray-600">–</span>}
+        </span>
+      </td>
+
+      {/* Due date + countdown */}
+      <td className="px-3 py-2.5 w-36 align-middle">
+        {task.dueDate ? (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-gray-700 dark:text-gray-300 tabular-nums">{formatDate(task.dueDate)}</span>
+            {!isDone && days !== null && <CountdownBadge days={days} />}
+          </div>
+        ) : <span className="text-gray-300 dark:text-gray-600 text-xs">–</span>}
+      </td>
+
+      {/* Tax Type */}
+      <td className="px-3 py-2.5 w-20 align-middle">
+        {task.taxType
+          ? <TaxTypeBadge type={task.taxType} size="xs" />
+          : <span className="text-gray-300 dark:text-gray-600 text-xs">–</span>}
+      </td>
+
+      {/* Priority */}
+      <td className="px-3 py-2.5 w-24 align-middle">
+        <span className={cn(
+          'text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wide',
+          priorityChip[task.priority] || priorityChip.low
+        )}>
+          {task.priority}
+        </span>
+      </td>
+
+      {/* Status */}
+      <td className="px-3 py-2.5 w-28 align-middle">
+        {isDone
+          ? <StatusBadge status="completed" />
+          : <span className="text-xs text-gray-400 dark:text-gray-500 capitalize">{(task.status || 'pending').replace('_', ' ')}</span>}
+      </td>
+
+      {/* Actions */}
+      <td className="pr-3 py-2.5 w-16 align-middle">
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={e => { e.stopPropagation(); onEdit(task); }}
+            title="Edit"
+            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); onDelete(task.id); }}
+            title="Delete"
+            className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 transition"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
         </div>
-      </div>
-    </div>
+      </td>
+    </tr>
   );
 }
 
-// ─── Tasks Page ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Tasks Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function Tasks() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, showToast } = useApp();
   const clients = useClients();
 
-  const [showAdd, setShowAdd]       = useState(false);
-  const [editing, setEditing]       = useState(null);
-  const [deletingId, setDeletingId] = useState(null);
-  const [filter, setFilter]         = useState('all');
+  const [showAdd, setShowAdd]           = useState(false);
+  const [editing, setEditing]           = useState(null);
+  const [deletingId, setDeletingId]     = useState(null);
+  const [search, setSearch]             = useState('');
   const [filterClient, setFilterClient] = useState('');
   const [filterType, setFilterType]     = useState('');
-  const [filterCategory, setFilterCategory] = useState('');
-  const [search, setSearch]             = useState('');
   const [selectedId, setSelectedId]     = useState(null);
+  const [showCleared, setShowCleared]   = useState('both'); // 'uncleared' | 'cleared' | 'both'
+  const [jumpOpen, setJumpOpen]         = useState(false);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const init = currentISOWeek();
+  const [week, setWeek] = useState(init.week);
+  const [year, setYear] = useState(init.year);
 
-  // Global keyboard shortcut: D = mark selected/first pending task done
+  const totalWeeks    = useMemo(() => isoWeeksInYear(year), [year]);
+  const isCurrentWeek = init.week === week && init.year === year;
+
+  const { weekMon, weekSun, rangeLabel } = useMemo(() => {
+    const mon = getMondayOfISOWeek(year, week);
+    const sun = new Date(mon);
+    sun.setDate(mon.getDate() + 6);
+    return { weekMon: mon, weekSun: sun, rangeLabel: `${fmtShortDate(mon)} – ${fmtShortDate(sun)}` };
+  }, [year, week]);
+
+  function prevWeek() {
+    if (week > 1) setWeek(w => w - 1);
+    else { const py = year - 1; setYear(py); setWeek(isoWeeksInYear(py)); }
+  }
+  function nextWeek() {
+    if (week < totalWeeks) setWeek(w => w + 1);
+    else { setYear(y => y + 1); setWeek(1); }
+  }
+  function goToCurrentWeek() { setWeek(init.week); setYear(init.year); }
+
+  // Keyboard shortcuts
   useEffect(() => {
     function handler(e) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       if (e.key === 'd' || e.key === 'D') {
         e.preventDefault();
         if (selectedId) {
-          dispatch({ type: 'COMPLETE_TASK', payload: selectedId });
+          const id = selectedId;
+          dispatch({ type: 'COMPLETE_TASK', payload: id });
+          showToast('Task marked completed', 'Undo', () => dispatch({ type: 'REOPEN_TASK', payload: id }));
           setSelectedId(null);
         }
       }
-      if (e.key === 'n' || e.key === 'N') {
-        e.preventDefault();
-        setShowAdd(true);
-      }
+      if (e.key === 'n' || e.key === 'N') { e.preventDefault(); setShowAdd(true); }
     }
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [selectedId, dispatch]);
 
-  const allTasks = useMemo(() => {
-    return [...state.tasks].sort((a, b) => {
-      if (!a.dueDate) return 1;
-      if (!b.dueDate) return -1;
-      return new Date(a.dueDate) - new Date(b.dueDate);
-    });
-  }, [state.tasks]);
+  const allTasks = useMemo(() => [...state.tasks].sort((a, b) => {
+    if (!a.dueDate) return 1;
+    if (!b.dueDate) return -1;
+    return new Date(a.dueDate) - new Date(b.dueDate);
+  }), [state.tasks]);
 
-  const filtered = useMemo(() => {
-    return allTasks.filter(t => {
+  // Tasks whose dueDate falls within viewed week (Mon–Sun)
+  const weekTasks = useMemo(() => allTasks.filter(t => {
+    if (!t.dueDate) return false;
+    const d = new Date(t.dueDate + 'T00:00:00');
+    return d >= weekMon && d <= weekSun;
+  }), [allTasks, weekMon, weekSun]);
+
+  // Tasks with no due date
+  const noDueTasks = useMemo(() => allTasks.filter(t => !t.dueDate), [allTasks]);
+
+  // Past uncleared: non-completed tasks with dueDate strictly before viewed week's Monday
+  const pastUncleared = useMemo(() => allTasks.filter(t => {
+    if (t.status === 'completed' || !t.dueDate) return false;
+    return new Date(t.dueDate + 'T00:00:00') < weekMon;
+  }), [allTasks, weekMon]);
+
+  // Earliest week that has a past-uncleared task
+  const earliestPastWeek = useMemo(() => {
+    if (!pastUncleared.length) return null;
+    return pastUncleared.reduce((acc, t) => {
+      const wk = getISOWeekOfDate(t.dueDate);
+      if (!acc) return wk;
+      return (wk.year < acc.year || (wk.year === acc.year && wk.week < acc.week)) ? wk : acc;
+    }, null);
+  }, [pastUncleared]);
+
+  // Apply cleared/uncleared + search + client + type filters
+  function applyFilters(tasks) {
+    return tasks.filter(t => {
+      if (showCleared === 'cleared'   && t.status !== 'completed') return false;
+      if (showCleared === 'uncleared' && t.status === 'completed') return false;
       if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false;
       if (filterClient && t.clientId !== filterClient) return false;
       if (filterType && t.taxType !== filterType) return false;
-      if (filterCategory && !(t.category || '').toLowerCase().includes(filterCategory.toLowerCase())) return false;
-      if (filter === 'today')    return t.dueDate?.slice(0, 10) === today && t.status !== 'completed';
-      if (filter === 'overdue')  return t.dueDate && t.dueDate.slice(0, 10) < today && t.status !== 'completed';
-      if (filter === 'pending')  return t.status === 'pending';
-      if (filter === 'in_progress') return t.status === 'in_progress';
-      if (filter === 'completed') return t.status === 'completed';
-      if (filter === 'non_tax')  return !t.taxType && (t.category || !t.clientId);
       return true;
     });
-  }, [allTasks, filter, filterClient, filterType, filterCategory, search, today]);
+  }
 
-  // Counts for tabs
-  const counts = useMemo(() => ({
-    all:         allTasks.length,
-    today:       allTasks.filter(t => t.dueDate?.slice(0, 10) === today && t.status !== 'completed').length,
-    overdue:     allTasks.filter(t => t.dueDate && t.dueDate.slice(0, 10) < today && t.status !== 'completed').length,
-    pending:     allTasks.filter(t => t.status === 'pending').length,
-    in_progress: allTasks.filter(t => t.status === 'in_progress').length,
-    completed:   allTasks.filter(t => t.status === 'completed').length,
-    non_tax:     allTasks.filter(t => !t.taxType && (t.category || !t.clientId)).length,
-  }), [allTasks, today]);
+  const filteredWeekTasks = useMemo(() => applyFilters(weekTasks),  [weekTasks,  showCleared, search, filterClient, filterType]);
+  const filteredNoDueTasks = useMemo(() => applyFilters(noDueTasks), [noDueTasks, showCleared, search, filterClient, filterType]);
 
-  const tabs = [
-    { key: 'all', label: 'All' },
-    { key: 'today', label: 'Today', urgent: counts.today > 0 },
-    { key: 'overdue', label: 'Overdue', urgent: counts.overdue > 0 },
-    { key: 'non_tax', label: 'Non-Tax' },
-    { key: 'pending', label: 'Pending' },
-    { key: 'in_progress', label: 'In Progress' },
-    { key: 'completed', label: 'Completed' },
-  ];
+  const activeTasks = allTasks.filter(t => t.status !== 'completed').length;
+
+  // Shared table header
+  const Thead = () => (
+    <thead>
+      <tr className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800">
+        <th className="pl-3 pr-1 py-2.5 w-8"></th>
+        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Task</th>
+        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-36">Client</th>
+        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-36">Due Date</th>
+        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-20">Type</th>
+        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-24">Priority</th>
+        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-28">Status</th>
+        <th className="pr-3 py-2.5 w-16"></th>
+      </tr>
+    </thead>
+  );
+
+  function renderRows(tasks) {
+    return tasks.map(t => (
+      <TaskRow
+        key={t.id}
+        task={t}
+        clients={clients}
+        onEdit={setEditing}
+        onDelete={setDeletingId}
+        onComplete={id => {
+          dispatch({ type: 'COMPLETE_TASK', payload: id });
+          showToast('Task marked completed', 'Undo', () => dispatch({ type: 'REOPEN_TASK', payload: id }));
+        }}
+        onReopen={id => dispatch({ type: 'REOPEN_TASK', payload: id })}
+        selected={selectedId === t.id}
+        onSelect={setSelectedId}
+      />
+    ));
+  }
 
   return (
     <div className="space-y-5 animate-fade-in">
-      {/* Header */}
+
+      {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">Tasks</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{counts.pending + counts.in_progress} active tasks</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{activeTasks} active tasks</p>
         </div>
         <div className="flex items-center gap-2">
           <KeyboardHint shortcut="N" label="new task" />
@@ -296,33 +561,127 @@ export default function Tasks() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-1.5 border-b border-gray-200 dark:border-gray-800 pb-3">
-        {tabs.map(tab => (
+      {/* â”€â”€ Past uncleared banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {pastUncleared.length > 0 && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-xl">
+          <svg className="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div className="flex-1 text-sm">
+            <span className="font-semibold text-amber-800 dark:text-amber-300">
+              {pastUncleared.length} uncleared task{pastUncleared.length !== 1 ? 's' : ''} from previous week{pastUncleared.length > 1 ? 's' : ''}
+            </span>
+            <span className="text-amber-700 dark:text-amber-400"> – still pending or in progress</span>
+          </div>
+          {earliestPastWeek && (
+            <button
+              onClick={() => { setWeek(earliestPastWeek.week); setYear(earliestPastWeek.year); setShowCleared('uncleared'); }}
+              className="flex-shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-200 dark:bg-amber-800/60 text-amber-900 dark:text-amber-200 hover:bg-amber-300 dark:hover:bg-amber-700/60 transition"
+            >
+              View oldest
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* â”€â”€ Week Navigator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl px-4 py-4 shadow-sm">
+        <div className="flex items-center gap-3">
           <button
-            key={tab.key}
-            onClick={() => setFilter(tab.key)}
-            className={cn(
-              'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
-              filter === tab.key
-                ? 'bg-blue-600 text-white'
-                : tab.urgent
-                  ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-300 border border-red-300 dark:border-red-800/50 hover:bg-red-200 dark:hover:bg-red-800/30'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            )}
+            onClick={prevWeek}
+            className="flex items-center gap-1 px-3 py-2 rounded-xl text-sm font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition flex-shrink-0"
           >
-            {tab.label}
-            {counts[tab.key] > 0 && (
-              <span className="ml-1.5 text-[10px] opacity-80">{counts[tab.key]}</span>
-            )}
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            <span className="hidden sm:inline">Prev</span>
           </button>
-        ))}
+
+          <div className="flex-1 flex flex-col items-center relative">
+            <div className="flex items-center gap-2 flex-wrap justify-center">
+              <p className="font-bold text-gray-900 dark:text-white text-base">Week {week} &middot; {year}</p>
+              {isCurrentWeek && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700/40">
+                  Current
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{rangeLabel}</p>
+
+            <div className="flex items-center gap-2 mt-2">
+              {!isCurrentWeek && (
+                <button
+                  onClick={goToCurrentWeek}
+                  className="text-xs font-medium px-2.5 py-1 rounded-lg text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700/40 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition"
+                >
+                  Go to Today
+                </button>
+              )}
+              <div className="relative">
+                <button
+                  onClick={() => setJumpOpen(o => !o)}
+                  className="flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Jump to week
+                  <svg className={cn('w-3 h-3 transition-transform', jumpOpen && 'rotate-180')} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {jumpOpen && (
+                  <QuickJumpPicker
+                    currentYear={year}
+                    currentWeek={week}
+                    onNavigate={(y, w) => { setYear(y); setWeek(w); }}
+                    onClose={() => setJumpOpen(false)}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={nextWeek}
+            className="flex items-center gap-1 px-3 py-2 rounded-xl text-sm font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition flex-shrink-0"
+          >
+            <span className="hidden sm:inline">Next</span>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <input className="input flex-1 min-w-[180px]" placeholder="Search tasks..." value={search} onChange={e => setSearch(e.target.value)} />
-        <input className="input w-full sm:w-44" placeholder="Filter by category..." value={filterCategory} onChange={e => setFilterCategory(e.target.value)} />
+      {/* â”€â”€ Controls: cleared toggle + search + filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      <div className="flex flex-wrap gap-3 items-center">
+        {/* Cleared / All / Uncleared toggle */}
+        <div className="flex rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 flex-shrink-0">
+          {[
+            { key: 'uncleared', label: 'Uncleared' },
+            { key: 'both',      label: 'All' },
+            { key: 'cleared',   label: 'Cleared' },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setShowCleared(key)}
+              className={cn(
+                'px-3 py-1.5 text-xs font-semibold transition-all',
+                showCleared === key
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+              )}
+            >{label}</button>
+          ))}
+        </div>
+
+        <input
+          className="input flex-1 min-w-[180px]"
+          placeholder="Search tasks..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
         <select className="input w-full sm:w-44" value={filterClient} onChange={e => setFilterClient(e.target.value)}>
           <option value="">All Clients</option>
           {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -333,34 +692,50 @@ export default function Tasks() {
         </select>
       </div>
 
-      {/* Task List */}
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon="📋"
-          title="No tasks found"
-          message="Create a task or adjust your filters."
-          action={<button onClick={() => setShowAdd(true)} className="btn-primary">New Task</button>}
-        />
-      ) : (
-        <div className="space-y-2">
-          {filtered.map(t => (
-            <div key={t.id} onClick={() => setSelectedId(selectedId === t.id ? null : t.id)}>
-              <TaskCard
-                task={t}
-                clients={clients}
-                onEdit={setEditing}
-                onDelete={setDeletingId}
-                onComplete={id => dispatch({ type: 'COMPLETE_TASK', payload: id })}
-                onReopen={id => dispatch({ type: 'REOPEN_TASK', payload: id })}
-                selected={selectedId === t.id}
-                onSelect={setSelectedId}
-              />
-            </div>
-          ))}
+      {/* â”€â”€ This week's tasks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+          <h2 className="font-semibold text-sm text-gray-800 dark:text-gray-200">
+            Tasks due this week
+            <span className="ml-2 text-xs text-gray-400 font-normal">{rangeLabel}</span>
+          </h2>
+          <span className="text-xs text-gray-400 dark:text-gray-600">
+            {filteredWeekTasks.length} task{filteredWeekTasks.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+        {filteredWeekTasks.length === 0 ? (
+          <div className="py-10 text-center text-sm text-gray-400 dark:text-gray-600">
+            No {showCleared === 'both' ? '' : showCleared + ' '}tasks for this week
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <Thead />
+              <tbody>{renderRows(filteredWeekTasks)}</tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* â”€â”€ No due date tasks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {filteredNoDueTasks.length > 0 && (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+            <h2 className="font-semibold text-sm text-gray-800 dark:text-gray-200">No Due Date</h2>
+            <span className="text-xs text-gray-400 dark:text-gray-600">
+              {filteredNoDueTasks.length} task{filteredNoDueTasks.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <Thead />
+              <tbody>{renderRows(filteredNoDueTasks)}</tbody>
+            </table>
+          </div>
         </div>
       )}
 
-      {/* Modals */}
+      {/* â”€â”€ Modals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <TaskForm isOpen={showAdd} onClose={() => setShowAdd(false)} onSave={d => dispatch({ type: 'ADD_TASK', payload: d })} clients={clients} />
       {editing && (
         <TaskForm

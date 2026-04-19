@@ -3,9 +3,6 @@ import { INITIAL_CLIENTS, INITIAL_TAX_RETURNS, INITIAL_TASKS } from '../data/ini
 import { saveState, loadState, uuid, getUpcomingDeadlines, checkAndNotify, getLastSyncTs, setLastSyncTs } from '../utils/index.js';
 import { supabase } from '../lib/supabase.js';
 
-// The shared row ID for team-wide cancellations (all users read/write this)
-const TEAM_ROW_ID = 'team_cancellations';
-
 // ─── Initial State ─────────────────────────────────────────────────────────────
 
 function getInitialState() {
@@ -15,6 +12,8 @@ function getInitialState() {
       ...saved,
       tallyProgress: saved.tallyProgress || [],
       cancellations: saved.cancellations  || [],
+      workingHours:  saved.workingHours   || {},
+      hourFormat:    saved.hourFormat     || '24',
       currentView:   'dashboard',
       currentMonth:  new Date().getFullYear() * 100 + new Date().getMonth(),
     };
@@ -25,6 +24,8 @@ function getInitialState() {
     tasks:         INITIAL_TASKS,
     tallyProgress: [],
     cancellations: [],
+    workingHours:  {},
+    hourFormat:    '24',
     darkMode:      true,
     notifications: false,
     currentView:   'dashboard',
@@ -135,22 +136,18 @@ function reducer(state, action) {
     case 'DELETE_TALLY_PROGRESS':
       return { ...state, tallyProgress: state.tallyProgress.filter(tp => tp.id !== action.payload) };
 
-    // ── Cancellations (team-shared, synced to the TEAM_ROW_ID row) ──
-    case 'ADD_CANCELLATION':
-      return {
-        ...state,
-        cancellations: [
-          ...state.cancellations,
-          {
-            id:          uuid(),
-            status:      'pending',
-            createdAt:   new Date().toISOString(),
-            completedAt: null,
-            completedBy: null,
-            ...action.payload,
-          },
-        ],
+    // ── Cancellations (team-shared, synced to team_cancellations table) ──
+    case 'ADD_CANCELLATION': {
+      const newItem = {
+        id:          action.payload.id || uuid(),
+        status:      'pending',
+        createdAt:   new Date().toISOString(),
+        completedAt: null,
+        completedBy: null,
+        ...action.payload,
       };
+      return { ...state, cancellations: [...state.cancellations, newItem] };
+    }
     case 'COMPLETE_CANCELLATION':
       return {
         ...state,
@@ -172,9 +169,40 @@ function reducer(state, action) {
     case 'DELETE_CANCELLATION':
       return { ...state, cancellations: state.cancellations.filter(c => c.id !== action.payload) };
 
-    // Fires when a remote real-time update arrives for the team cancellations row
+    // Fires when a remote real-time INSERT or UPDATE arrives for a single cancellation row
+    case 'SYNC_CANCELLATION_UPSERT': {
+      const idx = state.cancellations.findIndex(c => c.id === action.payload.id);
+      if (idx >= 0) {
+        const updated = [...state.cancellations];
+        updated[idx] = action.payload;
+        return { ...state, cancellations: updated };
+      }
+      return { ...state, cancellations: [...state.cancellations, action.payload] };
+    }
+    // Fires when a remote DELETE arrives
+    case 'SYNC_CANCELLATION_DELETE':
+      return { ...state, cancellations: state.cancellations.filter(c => c.id !== action.payload) };
+
+    // Fires on initial load to set the full cancellations list
     case 'SYNC_CANCELLATIONS':
       return { ...state, cancellations: action.payload || [] };
+
+    // ── Working Hours (personal, per-user) ──
+    case 'SET_HOUR_FORMAT':
+      return { ...state, hourFormat: action.payload };
+
+    case 'SET_WORKING_HOURS_ENTRY': {
+      const { weekKey, day, field, value } = action.payload;
+      const week    = state.workingHours?.[weekKey] || {};
+      const dayData = week[day] || {};
+      return {
+        ...state,
+        workingHours: {
+          ...state.workingHours,
+          [weekKey]: { ...week, [day]: { ...dayData, [field]: value } },
+        },
+      };
+    }
 
     default:
       return state;
@@ -192,16 +220,17 @@ const SyncContext = createContext(null);
 export function AppProvider({ userId, userEmail, children }) {
   const [state, dispatch]           = useReducer(reducer, undefined, getInitialState);
   const [syncStatus, setSyncStatus] = useState('idle');
+  const [toast, setToast]           = useState(null);
+
+  const showToast = useCallback((message, actionLabel, onAction) => {
+    setToast({ message, actionLabel, onAction });
+  }, []);
 
   // ── Personal sync refs ──────────────────────────────────────────────────────
   const pushTimerRef   = useRef(null);
   const skipPushRef    = useRef(false);
   const isPullingRef   = useRef(true);
 
-  // ── Cancellations sync refs ─────────────────────────────────────────────────
-  const cancPushTimer    = useRef(null);
-  const skipCancPushRef  = useRef(false);
-  const isCancPullingRef = useRef(true);
 
   const stateRef = useRef(state);
 
@@ -263,29 +292,14 @@ export function AppProvider({ userId, userEmail, children }) {
     }
   }, [userId]);
 
-  // ── Push shared cancellations to Supabase (team row) ────────────────────────
-  const pushCancellations = useCallback(async (cancellations) => {
-    try {
-      await supabase
-        .from('app_state')
-        .upsert({
-          id:         TEAM_ROW_ID,
-          data:       { cancellations },
-          updated_at: new Date().toISOString(),
-        });
-    } catch { /* silent */ }
-  }, []);
-
   // ── Manual Sync Trigger ──────────────────────────────────────────────────────
   const manualSync = useCallback(async () => {
     setSyncStatus('syncing');
     try {
-      // 1. Pull check
       const { data: rows, error } = await supabase.from('app_state').select('data, updated_at').eq('id', userId).single();
       if (!error && rows?.data) {
         const lastSync = getLastSyncTs();
         const remoteUpdated = new Date(rows.updated_at).getTime();
-        // Always import if remote is newer
         if (remoteUpdated > lastSync) {
            skipPushRef.current = true;
            dispatch({ type: 'IMPORT_DATA', payload: rows.data });
@@ -294,18 +308,13 @@ export function AppProvider({ userId, userEmail, children }) {
            return;
         }
       }
-      
-      // 2. If we reach here, local is newer or equal. Push local to Supabase.
-      const { currentView, currentMonth, cancellations, ...personalData } = stateRef.current;
+      const { currentView, currentMonth, cancellations: _c, ...personalData } = stateRef.current;
       await pushPersonalData(personalData);
-      await pushCancellations(cancellations);
-      
-      // Force pull again just to ensure UI reflects 'synced' and everything is green
       pullPersonalData();
     } catch {
        setSyncStatus('error');
     }
-  }, [userId, pushPersonalData, pushCancellations, pullPersonalData]);
+  }, [userId, pushPersonalData, pullPersonalData]);
 
   // ── Persist to localStorage + schedule personal Supabase push ───────────────
   useEffect(() => {
@@ -320,30 +329,20 @@ export function AppProvider({ userId, userEmail, children }) {
     pushTimerRef.current = setTimeout(() => pushPersonalData(personalData), 1500);
   }, [state, pushPersonalData]);
 
-  // ── Schedule cancellations push when they change ─────────────────────────────
-  useEffect(() => {
-    clearTimeout(cancPushTimer.current);
-    if (skipCancPushRef.current) { skipCancPushRef.current = false; return; }
-    if (isCancPullingRef.current) return;
-    cancPushTimer.current = setTimeout(() => pushCancellations(state.cancellations), 1500);
-  }, [state.cancellations, pushCancellations]);
-
   // ── Immediate push when tab is hidden ────────────────────────────────────────
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         clearTimeout(pushTimerRef.current);
-        clearTimeout(cancPushTimer.current);
-        const { currentView, currentMonth, cancellations, ...personalData } = stateRef.current;
+        const { currentView, currentMonth, cancellations: _c, ...personalData } = stateRef.current;
         pushPersonalData(personalData);
-        pushCancellations(cancellations);
       } else if (document.visibilityState === 'visible') {
         pullPersonalData();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [pushPersonalData, pushCancellations, pullPersonalData]);
+  }, [pushPersonalData, pullPersonalData]);
 
   // ── On mount: pull personal data + real-time subscribe ──────────────────────
   useEffect(() => {
@@ -358,7 +357,7 @@ export function AppProvider({ userId, userEmail, children }) {
           if (payload.new?.data) {
             skipPushRef.current = true;
             dispatch({ type: 'IMPORT_DATA', payload: payload.new.data });
-            setLastSyncTs(Date.now());
+            setLastSyncTs(new Date(payload.new?.updated_at ?? Date.now()).getTime());
             setSyncStatus('synced');
           }
         }
@@ -368,38 +367,99 @@ export function AppProvider({ userId, userEmail, children }) {
     return () => { supabase.removeChannel(personalChannel); };
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── On mount: pull shared cancellations + real-time subscribe ────────────────
-  useEffect(() => {
-    async function pullCancellations() {
-      try {
-        const { data: rows, error } = await supabase
-          .from('app_state')
-          .select('data')
-          .eq('id', TEAM_ROW_ID)
-          .single();
+  // ── Converts a team_cancellations DB row to the app model ───────────────────
+  function rowToItem(row) {
+    return {
+      id:          row.id,
+      clientId:    row.client_id,
+      clientName:  row.client_name,
+      taxType:     row.tax_type,
+      notes:       row.notes,
+      status:      row.status,
+      createdAt:   row.created_at,
+      createdBy:   row.created_by,
+      completedAt: row.completed_at,
+      completedBy: row.completed_by,
+      assignedTo:  row.assigned_to,
+    };
+  }
 
-        if (!error && rows?.data?.cancellations !== undefined) {
-          skipCancPushRef.current = true;
-          dispatch({ type: 'SYNC_CANCELLATIONS', payload: rows.data.cancellations });
-        }
-      } catch { /* silent */ } finally {
-        isCancPullingRef.current = false;
+  // ── syncedDispatch: intercepts cancellation actions for row-level Supabase ops
+  const syncedDispatch = useCallback((action) => {
+    switch (action.type) {
+      case 'ADD_CANCELLATION': {
+        const id      = uuid();
+        const payload = { ...action.payload, id };
+        dispatch({ type: 'ADD_CANCELLATION', payload });
+        supabase.from('team_cancellations').insert({
+          id,
+          client_id:    payload.clientId,
+          client_name:  payload.clientName,
+          tax_type:     payload.taxType   || null,
+          notes:        payload.notes     || null,
+          status:       'pending',
+          created_by:   payload.createdBy,
+          assigned_to:  payload.assignedTo || null,
+        }).then(({ error }) => { if (error) console.error('cancellation insert:', error); });
+        break;
       }
+      case 'COMPLETE_CANCELLATION': {
+        dispatch(action);
+        const now = new Date().toISOString();
+        supabase.from('team_cancellations').update({
+          status:       'completed',
+          completed_at: now,
+          completed_by: action.payload.completedBy,
+        }).eq('id', action.payload.id)
+          .then(({ error }) => { if (error) console.error('cancellation complete:', error); });
+        break;
+      }
+      case 'REOPEN_CANCELLATION': {
+        dispatch(action);
+        supabase.from('team_cancellations').update({
+          status:       'pending',
+          completed_at: null,
+          completed_by: null,
+        }).eq('id', action.payload)
+          .then(({ error }) => { if (error) console.error('cancellation reopen:', error); });
+        break;
+      }
+      case 'DELETE_CANCELLATION': {
+        dispatch(action);
+        supabase.from('team_cancellations').delete().eq('id', action.payload)
+          .then(({ error }) => { if (error) console.error('cancellation delete:', error); });
+        break;
+      }
+      default:
+        dispatch(action);
     }
+  }, [dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    pullCancellations();
+  // ── On mount: pull team_cancellations rows + real-time subscribe ─────────────
+  useEffect(() => {
+    supabase
+      .from('team_cancellations')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (!error && data) {
+          dispatch({ type: 'SYNC_CANCELLATIONS', payload: data.map(rowToItem) });
+        }
+      });
 
     const teamChannel = supabase
-      .channel('team_cancellations_sync')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'app_state', filter: `id=eq.${TEAM_ROW_ID}` },
-        (payload) => {
-          if (payload.new?.data?.cancellations !== undefined) {
-            skipCancPushRef.current = true;
-            dispatch({ type: 'SYNC_CANCELLATIONS', payload: payload.new.data.cancellations });
-          }
-        }
+      .channel('team_cancellations_realtime')
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'team_cancellations' },
+        ({ new: row }) => dispatch({ type: 'SYNC_CANCELLATION_UPSERT', payload: rowToItem(row) })
+      )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'team_cancellations' },
+        ({ new: row }) => dispatch({ type: 'SYNC_CANCELLATION_UPSERT', payload: rowToItem(row) })
+      )
+      .on('postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'team_cancellations' },
+        ({ old: row }) => dispatch({ type: 'SYNC_CANCELLATION_DELETE', payload: row.id })
       )
       .subscribe();
 
@@ -408,7 +468,7 @@ export function AppProvider({ userId, userEmail, children }) {
 
   return (
     <SyncContext.Provider value={syncStatus}>
-      <AppContext.Provider value={{ state, dispatch, userId, userEmail, manualSync }}>
+      <AppContext.Provider value={{ state, dispatch: syncedDispatch, userId, userEmail, manualSync, toast, setToast, showToast }}>
         {children}
       </AppContext.Provider>
     </SyncContext.Provider>

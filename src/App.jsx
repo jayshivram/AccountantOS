@@ -9,12 +9,13 @@ import TallyTracker   from './pages/TallyTracker.jsx';
 import FocusMode      from './pages/FocusMode.jsx';
 import ExportPage     from './pages/Export.jsx';
 import Cancellations  from './pages/Cancellations.jsx';
+import WorkingHours   from './pages/WorkingHours.jsx';
 import Login          from './components/Login.jsx';
 import {
   exportData, importData, requestNotificationPermission, cn, getLastSyncTs, clearState
 } from './utils/index.js';
 import { isInstallable, promptInstall, isRunningStandalone, clearAppCache } from './lib/pwa.js';
-import { Toggle, Modal, BatteryWidget, LiveClock } from './components/UI.jsx';
+import { Toggle, Modal, BatteryWidget, LiveClock, ToastContainer } from './components/UI.jsx';
 import { supabase } from './lib/supabase.js';
 
 // ─── Nav Icons (inline SVG) ───────────────────────────────────────────────────
@@ -63,6 +64,11 @@ const Icons = {
   Cancellations: () => (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l2 2 4-4m-1-9H7a2 2 0 00-2 2v16a2 2 0 002 2h10a2 2 0 002-2V7l-4-4z" />
+    </svg>
+  ),
+  WorkingHours: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   ),
   Logout: () => (
@@ -220,6 +226,29 @@ function SettingsModal({ isOpen, onClose, onLogout, userEmail }) {
           <Toggle checked={state.notifications} onChange={enableNotifications} />
         </div>
 
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Time Format</p>
+            <p className="text-xs text-gray-500">Working Hours display</p>
+          </div>
+          <div className="flex items-center gap-0.5 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg">
+            {['24', '12'].map(fmt => (
+              <button
+                key={fmt}
+                onClick={() => dispatch({ type: 'SET_HOUR_FORMAT', payload: fmt })}
+                className={cn(
+                  'px-3 py-1 text-xs font-semibold rounded-md transition',
+                  (state.hourFormat || '24') === fmt
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                )}
+              >
+                {fmt}h
+              </button>
+            ))}
+          </div>
+        </div>
+
         <hr className="border-gray-200 dark:border-gray-800" />
 
         <div>
@@ -308,8 +337,7 @@ function Sidebar({ currentView, onNavigate, onSettings, mobileOpen, onMobileClos
     { key: 'calendar',      label: 'Calendar',        Icon: Icons.Calendar      },
     { key: 'tasks',         label: 'Tasks',           Icon: Icons.Tasks         },
     { key: 'tally',         label: 'Tally Tracker',   Icon: Icons.Tally         },
-    { key: 'cancellations', label: 'Cancellations',   Icon: Icons.Cancellations },
-    { key: 'history',       label: 'History',         Icon: Icons.History       },
+    { key: 'cancellations', label: 'Cancellations',   Icon: Icons.Cancellations },    { key: 'workinghours',  label: 'Working Hours',    Icon: Icons.WorkingHours  },    { key: 'history',       label: 'History',         Icon: Icons.History       },
     { key: 'export',        label: 'Export',          Icon: Icons.Export        },
   ];
 
@@ -438,6 +466,7 @@ function AppShell({ onLogout, userEmail }) {
     focus:         'Focus Mode',
     export:        'Export',
     cancellations: 'Cancellations',
+    workinghours:  'Working Hours',
   };
 
   // Render current page
@@ -452,7 +481,8 @@ function AppShell({ onLogout, userEmail }) {
       case 'focus':     return <FocusMode onNavigate={navigate} />;
       case 'export':        return <ExportPage />;
       case 'cancellations': return <Cancellations />;
-      default:              return <Dashboard onNavigate={navigate} />;
+      case 'workinghours':   return <WorkingHours />;
+      default:               return <Dashboard onNavigate={navigate} />;
     }
   }
 
@@ -546,6 +576,7 @@ function AppShell({ onLogout, userEmail }) {
         onLogout={onLogout}
         userEmail={userEmail}
       />
+      <ToastContainer />
     </div>
   );
 }

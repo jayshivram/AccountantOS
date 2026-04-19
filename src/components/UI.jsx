@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useApp } from '../context/AppContext.jsx';
 import { cn } from '../utils/index.js';
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
@@ -363,6 +364,128 @@ export function LiveClock() {
       <div className="text-right leading-tight">
         <p className="font-semibold text-gray-700 dark:text-gray-200 tabular-nums">{dayName}, {date}</p>
         <p className="text-gray-500 dark:text-gray-400 tabular-nums font-mono">{time}</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── ClickToCopy ──────────────────────────────────────────────────────────────
+
+export function ClickToCopy({ label, value }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(value);
+      } else {
+        // Fallback for older browsers (unlikely needed in modern contexts, but good practice)
+        const el = document.createElement('textarea');
+        el.value = value;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* silent */ }
+  }
+
+  return (
+    <button
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); copy(); }}
+      className={cn(
+        'inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-[11px] font-mono transition-colors tracking-wide',
+        copied 
+          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-300 dark:border-green-800' 
+          : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white hover:border-gray-300 dark:hover:border-gray-600'
+      )}
+      title="Click to copy"
+    >
+      <span className="font-sans font-semibold opacity-70">{label}:</span>
+      {value}
+      {copied ? (
+        <svg className="w-3 h-3 text-green-600 dark:text-green-400 ml-0.5 animate-in fade-in zoom-in" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+        </svg>
+      ) : (
+        <svg className="w-3 h-3 opacity-50 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+// ─── ActiveUsers ──────────────────────────────────────────────────────────────
+
+export function ActiveUsers() {
+  const { onlineUsers } = useApp();
+  
+  if (!onlineUsers || onlineUsers.length === 0) return null;
+
+  return (
+    <div className="flex items-center -space-x-2 mr-2">
+      {onlineUsers.slice(0, 3).map((user, i) => (
+        <div key={user.email} className="relative group" style={{ zIndex: 10 - i }}>
+          <div className="w-7 h-7 rounded-full bg-blue-600 border-2 border-white dark:border-gray-950 flex items-center justify-center text-[10px] font-bold text-white shadow-sm ring-1 ring-black/5 cursor-default">
+            {user.email[0].toUpperCase()}
+          </div>
+          <div className="absolute bottom-0 right-0 w-2 h-2 rounded-full border border-white dark:border-gray-950 bg-green-500" />
+          
+          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-2 py-1 bg-gray-900 text-white text-[10px] whitespace-nowrap rounded font-medium opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+            {user.email.split('@')[0]}
+          </div>
+        </div>
+      ))}
+      {onlineUsers.length > 3 && (
+        <div className="w-7 h-7 rounded-full bg-gray-200 dark:bg-gray-800 border-2 border-white dark:border-gray-950 flex items-center justify-center text-[10px] font-bold text-gray-600 dark:text-gray-300 shadow-sm z-0">
+          +{onlineUsers.length - 3}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ToastContainer ───────────────────────────────────────────────────────────
+
+export function ToastContainer() {
+  const { toast, setToast } = useApp();
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(timer);
+  }, [toast, setToast]);
+
+  if (!toast) return null;
+
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
+      <div className="bg-gray-900 dark:bg-white text-white dark:text-gray-900 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-gray-800 dark:border-gray-200">
+        <svg className="w-5 h-5 text-green-400 dark:text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+        <span className="text-sm font-medium">{toast.message}</span>
+        
+        {toast.actionLabel && toast.onAction && (
+          <button
+            onClick={() => {
+              toast.onAction();
+              setToast(null);
+            }}
+            className="ml-2 pl-3 border-l border-gray-700 dark:border-gray-300 text-sm font-bold text-blue-400 dark:text-blue-600 hover:text-blue-300 dark:hover:text-blue-700 transition-colors uppercase tracking-wider"
+          >
+            {toast.actionLabel}
+          </button>
+        )}
+        
+        <button onClick={() => setToast(null)} className="ml-1 p-1 text-gray-400 hover:text-white dark:hover:text-gray-900">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
     </div>
   );

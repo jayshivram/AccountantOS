@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { useApp, useClients } from '../context/AppContext.jsx';
 import {
-  TAX_TYPES, TAX_TYPE_KEYS, uuid, getActivePeriods, formatDate, cn, format,
+  TAX_TYPES, TAX_TYPE_KEYS, uuid, getActivePeriods, formatDate, cn, format, formatTIN, formatVRN
 } from '../utils/index.js';
 import {
-  Modal, ConfirmDialog, TaxTypeBadge, StatusBadge, ProgressBar, EmptyState,
+  Modal, ConfirmDialog, TaxTypeBadge, StatusBadge, ProgressBar, EmptyState, ClickToCopy
 } from '../components/UI.jsx';
 
 // ─── Tax Return Checklist Modal ───────────────────────────────────────────────
@@ -310,6 +310,8 @@ function TaxReturnModal({ client, isOpen, onClose }) {
 
 function ClientForm({ initial, isOpen, onClose, onSave }) {
   const [name, setName] = useState(initial?.name || '');
+  const [tin, setTin] = useState(initial?.tin || '');
+  const [vrn, setVrn] = useState(initial?.vrn || '');
   const [taxTypes, setTaxTypes] = useState(initial?.taxTypes || []);
   const [tallyYears, setTallyYears] = useState((initial?.tallyYears || []).join(', '));
   const [notes, setNotes] = useState(initial?.notes || '');
@@ -322,7 +324,7 @@ function ClientForm({ initial, isOpen, onClose, onSave }) {
     e.preventDefault();
     if (!name.trim()) return;
     const years = tallyYears.split(',').map(y => parseInt(y.trim())).filter(y => !isNaN(y));
-    onSave({ ...initial, name: name.trim(), taxTypes, tallyYears: years, notes });
+    onSave({ ...initial, name: name.trim(), tin, vrn, taxTypes, tallyYears: years, notes });
     onClose();
   }
 
@@ -339,6 +341,27 @@ function ClientForm({ initial, isOpen, onClose, onSave }) {
             required
             autoFocus
           />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">TIN Number</label>
+            <input
+              className="input text-xs"
+              value={tin}
+              onChange={e => setTin(formatTIN(e.target.value))}
+              placeholder="100-183-471"
+            />
+          </div>
+          <div>
+            <label className="label">VRN Number</label>
+            <input
+              className="input text-xs"
+              value={vrn}
+              onChange={e => setVrn(formatVRN(e.target.value))}
+              placeholder="10-005396-Z"
+            />
+          </div>
         </div>
 
         <div>
@@ -432,6 +455,12 @@ function ClientRow({ client, onEdit, onDelete, onViewFilings, onToggleHidden }) 
             <span className="whitespace-nowrap">✓ {completedReturns} submissions</span>
             {client.tallyYears.length > 0 && (
               <span className="whitespace-nowrap">📊 Tally: {client.tallyYears.join(', ')}</span>
+            )}
+            {(client.tin || client.vrn) && (
+              <div className="flex gap-2 items-center">
+                {client.tin && <ClickToCopy label="TIN" value={client.tin} />}
+                {client.vrn && <ClickToCopy label="VRN" value={client.vrn} />}
+              </div>
             )}
           </div>
         </div>

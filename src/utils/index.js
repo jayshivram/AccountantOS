@@ -502,3 +502,19 @@ export function getStatusColor(status) {
   if (status === 'in_progress') return 'text-blue-400';
   return 'text-gray-400';
 }
+// ─── Formatters ───────────────────────────────────────────────────────────────
+export function formatTIN(val) {
+  if (!val) return '';
+  const digits = val.replace(/\D/g, '').slice(0, 9);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0,3)}-${digits.slice(3)}`;
+  return `${digits.slice(0,3)}-${digits.slice(3,6)}-${digits.slice(6)}`;
+}
+
+export function formatVRN(val) {
+  if (!val) return '';
+  const chars = val.replace(/[\s-]/g, '').toUpperCase().slice(0, 9);
+  if (chars.length <= 2) return chars;
+  if (chars.length <= 8) return `${chars.slice(0,2)}-${chars.slice(2)}`;
+  return `${chars.slice(0,2)}-${chars.slice(2,8)}-${chars.slice(8)}`;
+}

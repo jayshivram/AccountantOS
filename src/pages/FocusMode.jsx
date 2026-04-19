@@ -123,19 +123,26 @@ function DeadlineCard({ deadline, clients, taxReturns }) {
 // ─── Personal Task Row ─────────────────────────────────────────────────────────
 
 function FocusTaskRow({ task, clients }) {
-  const { dispatch } = useApp();
+  const { dispatch, showToast } = useApp();
   const client = clients.find(c => c.id === task.clientId);
   const isComplete = task.status === 'completed';
 
   function toggleDone() {
+    const nextStatus = isComplete ? 'pending' : 'completed';
     dispatch({
       type: 'EDIT_TASK',
       payload: {
         ...task,
-        status: isComplete ? 'pending' : 'completed',
+        status: nextStatus,
         completedAt: isComplete ? null : new Date().toISOString(),
       },
     });
+
+    if (nextStatus === 'completed') {
+      showToast('Task marked completed', 'Undo', () => {
+        dispatch({ type: 'REOPEN_TASK', payload: task.id });
+      });
+    }
   }
 
   return (
@@ -209,12 +216,16 @@ export default function FocusMode({ onNavigate }) {
       });
   }, [state.clients, state.taxReturns]);
 
-  // ── Personal tasks (due within 7 days OR overdue, not completed) ──
+  // ── Personal tasks (due within 7 days OR overdue) ──
   const focusTasks = useMemo(() => {
-    const today = new Date();
     return tasks
       .filter(t => {
         if (!t.dueDate) return false;
+        if (t.status === 'completed') {
+          if (!t.completedAt) return false;
+          const hoursSinceCompletion = (Date.now() - new Date(t.completedAt).getTime()) / (1000 * 60 * 60);
+          if (hoursSinceCompletion > 24) return false;
+        }
         const days = daysUntil(t.dueDate);
         return days <= 7;
       })
@@ -223,8 +234,12 @@ export default function FocusMode({ onNavigate }) {
 
   // Group personal tasks by bucket
   const taskGroups = useMemo(() => {
-    const groups = { overdue: [], today: [], tomorrow: [], week: [] };
+    const groups = { overdue: [], today: [], tomorrow: [], week: [], completed: [] };
     focusTasks.forEach(t => {
+      if (t.status === 'completed') {
+        groups.completed.push(t);
+        return;
+      }
       const d = daysUntil(t.dueDate);
       if (d < 0)       groups.overdue.push(t);
       else if (d === 0) groups.today.push(t);
@@ -346,6 +361,18 @@ export default function FocusMode({ onNavigate }) {
                 </p>
                 <div className="space-y-2">
                   {taskGroups.week.map(t => (
+                    <FocusTaskRow key={t.id} task={t} clients={clients} />
+                  ))}
+                </div>
+              </div>
+            )}
+            {taskGroups.completed.length > 0 && (
+              <div>
+                <p className="text-xs font-bold text-green-600 dark:text-green-400 uppercase tracking-wide mb-2 mt-4">
+                  ✓ Recently Completed
+                </p>
+                <div className="space-y-2">
+                  {taskGroups.completed.map(t => (
                     <FocusTaskRow key={t.id} task={t} clients={clients} />
                   ))}
                 </div>
