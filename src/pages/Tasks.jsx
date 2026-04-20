@@ -35,6 +35,7 @@ function isoWeeksInYear(year) {
 
 function currentISOWeek() {
   const today    = new Date();
+  today.setHours(0, 0, 0, 0);
   const dow      = today.getDay() || 7;
   const thu      = new Date(today);
   thu.setDate(today.getDate() - dow + 4);
