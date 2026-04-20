@@ -8,11 +8,6 @@ const MONTH_NAMES = [
   'July','August','September','October','November','December',
 ];
 
-// Detect mobile browsers where window.print() is unreliable
-function isMobileBrowser() {
-  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
-}
-
 // ─── Cell renderers ───────────────────────────────────────────────────────────
 
 function CellVal({ value }) {
@@ -38,7 +33,6 @@ export default function ExportPage() {
   const [month, setMonth]      = useState(now.getMonth()); // 0-indexed
   const [filterType, setFilterType] = useState('ALL');
   const [showHidden, setShowHidden] = useState(false);
-  const [printToast, setPrintToast] = useState(false);
 
   const hiddenCount = useMemo(() => clients.filter(c => c.hidden).length, [clients]);
 
@@ -152,27 +146,67 @@ export default function ExportPage() {
     URL.revokeObjectURL(url);
   }
 
-  // ── Print ─────────────────────────────────────────────────────────────────
-  function handlePrint() {
-    if (isMobileBrowser()) {
-      // On mobile, trigger print anyway but also show a helpful hint
-      setPrintToast(true);
-      setTimeout(() => setPrintToast(false), 5000);
-    }
-    window.print();
+  // ── Print (plain table PDF) ───────────────────────────────────────────────
+  function exportPDF() {
+    const colDefs = [
+      { label: 'Client',       width: '18%' },
+      { label: 'Tax Type',     width: '10%' },
+      { label: 'Period',       width: '10%' },
+      { label: 'Status',       width: '9%'  },
+      { label: 'Return Filed', width: '8%'  },
+      { label: 'Screenshot',   width: '8%'  },
+      { label: 'Payment',      width: '8%'  },
+      { label: 'Downloaded',   width: '8%'  },
+      { label: 'Client Copy',  width: '8%'  },
+      { label: 'Notes',        width: '13%' },
+    ];
+    const boolVal  = v => v === true ? '✓' : v === 'nil' ? 'NIL' : '–';
+    const clientCopyVal = v => v === 'sent' ? '✓' : v === 'nil' ? 'NIL' : '–';
+
+    const headerRow = colDefs.map(c =>
+      `<th style="width:${c.width};padding:7px 8px;background:#f3f4f6;border:1px solid #d1d5db;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;font-weight:600;">${c.label}</th>`
+    ).join('');
+
+    const statusColors = { completed: '#059669', in_progress: '#2563eb', pending: '#9ca3af' };
+    const statusLabels = { completed: 'Completed', in_progress: 'In Progress', pending: 'Pending' };
+
+    const bodyRows = displayRows.map((r, ri) => {
+      const bg = ri % 2 === 0 ? '#ffffff' : '#f9fafb';
+      const statusColor = statusColors[r.status] || '#9ca3af';
+      const cells = [
+        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};font-weight:${r.isFirst ? '600' : '400'};color:#111827;">${r.clientName}</td>`,
+        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};color:#374151;">${TAX_TYPES[r.taxType] || r.taxType}</td>`,
+        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};color:#374151;">${r.periodLabel}</td>`,
+        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};color:${statusColor};font-weight:600;">${statusLabels[r.status] || r.status}</td>`,
+        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};text-align:center;color:${r.returnSubmitted === true ? '#059669' : '#9ca3af'};">${boolVal(r.returnSubmitted)}</td>`,
+        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};text-align:center;color:${r.screenshotTaken === true ? '#059669' : '#9ca3af'};">${boolVal(r.screenshotTaken)}</td>`,
+        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};text-align:center;color:${r.paymentConfirmed === true ? '#059669' : '#9ca3af'};">${boolVal(r.paymentConfirmed)}</td>`,
+        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};text-align:center;color:${r.returnDownloaded === true ? '#059669' : '#9ca3af'};">${boolVal(r.returnDownloaded)}</td>`,
+        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};text-align:center;color:${r.payslipStatus === 'sent' ? '#059669' : '#9ca3af'};">${clientCopyVal(r.payslipStatus)}</td>`,
+        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};color:#6b7280;">${r.notes || ''}</td>`,
+      ];
+      return `<tr>${cells.join('')}</tr>`;
+    }).join('') || `<tr><td colspan="10" style="padding:16px;text-align:center;color:#9ca3af;font-size:11px;border:1px solid #e5e7eb;">No data</td></tr>`;
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Submission Report – ${MONTH_NAMES[month]} ${year}</title>
+<style>body{font-family:Arial,sans-serif;margin:20px;color:#111827;}h2{margin:0 0 4px;font-size:15px;}p{margin:0 0 12px;font-size:11px;color:#6b7280;}table{border-collapse:collapse;width:100%;}@media print{body{margin:10px;}}</style>
+</head><body>
+<h2>Submission Report &mdash; ${MONTH_NAMES[month]} ${year}${hasQuarterly ? ` &middot; ${quarterLabel}` : ''}</h2>
+<p>${total} filing${total !== 1 ? 's' : ''} &middot; ${completed} completed &middot; ${inProgress} in progress &middot; ${pending} pending</p>
+<table><thead><tr>${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table>
+</body></html>`;
+
+    const w = window.open('', '_blank', 'width=1100,height=700');
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.onload = () => { w.focus(); w.print(); };
   }
 
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-5">
-
-      {/* Mobile print hint toast */}
-      {printToast && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 bg-gray-800 dark:bg-gray-700 border border-gray-600 text-white text-xs rounded-xl px-4 py-3 shadow-xl max-w-xs text-center animate-fade-in" data-no-print>
-          📄 On mobile: tap <strong>Share</strong> → <strong>Print</strong> in your browser menu if the dialog didn't appear.
-        </div>
-      )}
 
       {/* Page header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -194,13 +228,13 @@ export default function ExportPage() {
             Export CSV
           </button>
           <button
-            onClick={handlePrint}
+            onClick={exportPDF}
             className="btn btn-secondary flex items-center gap-2 text-sm"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
             </svg>
-            Print / Save PDF
+            Export PDF
           </button>
         </div>
       </div>
@@ -255,14 +289,20 @@ export default function ExportPage() {
             <button
               onClick={() => setShowHidden(v => !v)}
               className={cn(
-                'text-xs px-3 py-1 rounded-full font-semibold border transition-all ml-auto',
+                'text-xs px-3 py-1 rounded-full font-semibold border transition-all ml-auto flex items-center gap-1.5',
                 showHidden
                   ? 'bg-indigo-600 border-indigo-500 text-white'
-                  : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500'
+                  : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 dark:hover:border-indigo-600 hover:text-indigo-600 dark:hover:text-indigo-400'
               )}
-              title={showHidden ? 'Click to hide hidden clients from report' : `Click to include ${hiddenCount} hidden client(s) in report`}
+              title={showHidden ? 'Click to exclude hidden clients from report' : `Click to include ${hiddenCount} hidden client${hiddenCount !== 1 ? 's' : ''} in report`}
             >
-              {showHidden ? `👁 Incl. Hidden (${hiddenCount})` : `🙈 ${hiddenCount} hidden`}
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {showHidden
+                  ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                }
+              </svg>
+              {showHidden ? `Hide hidden (${hiddenCount})` : `Show hidden (${hiddenCount})`}
             </button>
           )}
         </div>

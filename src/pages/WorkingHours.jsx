@@ -103,6 +103,70 @@ function nowHHMM() {
   return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
 }
 
+// ─── Live Net Timer ───────────────────────────────────────────────────────────
+// Shows a running timer for today's row when timeIn is set but timeOut is not.
+// Pauses (shows "On Break") when breakStart is set but breakStop is not.
+
+function LiveNetTimer({ timeIn, breakStart, breakStop }) {
+  const [nowMins, setNowMins] = useState(() => {
+    const n = new Date();
+    return n.getHours() * 60 + n.getMinutes();
+  });
+
+  useEffect(() => {
+    const tick = () => {
+      const n = new Date();
+      setNowMins(n.getHours() * 60 + n.getMinutes());
+    };
+    tick();
+    const id = setInterval(tick, 30000); // refresh every 30s
+    return () => clearInterval(id);
+  }, []);
+
+  const inM  = toMins(timeIn);
+  const bsM  = toMins(breakStart);
+  const beM  = toMins(breakStop);
+
+  if (inM === null) return null;
+
+  const onBreak = bsM !== null && beM === null;
+
+  let netMins;
+  if (onBreak) {
+    // Frozen at break start minus time-in
+    netMins = bsM - inM;
+  } else {
+    netMins = nowMins - inM;
+    if (bsM !== null && beM !== null && beM > bsM) {
+      netMins -= beM - bsM;
+    }
+  }
+
+  if (netMins <= 0) return null;
+
+  return (
+    <div className="flex flex-col items-end gap-0.5 mt-0.5">
+      <div className={cn(
+        'flex items-center gap-1 text-xs font-semibold tabular-nums',
+        onBreak ? 'text-amber-500 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
+      )}>
+        <span className={cn(
+          'w-1.5 h-1.5 rounded-full flex-shrink-0',
+          onBreak
+            ? 'bg-amber-400'
+            : 'bg-emerald-500 animate-pulse'
+        )} />
+        {fmtMins(netMins)}
+      </div>
+      {onBreak && (
+        <span className="text-[9px] font-bold uppercase tracking-widest text-amber-400 dark:text-amber-500 leading-none">
+          On Break
+        </span>
+      )}
+    </div>
+  );
+}
+
 // â”€â”€â”€ TimeCell â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const SCHEME = {
@@ -365,9 +429,9 @@ export default function WorkingHours() {
   const { state, dispatch } = useApp();
   const use12h = (state.hourFormat || '24') === '12';
 
-  const init = currentISOWeek();
-  const [week, setWeek] = useState(init.week);
-  const [year, setYear] = useState(init.year);
+  const { week: initWeek, year: initYear } = useMemo(() => currentISOWeek(), []);
+  const [week, setWeek] = useState(initWeek);
+  const [year, setYear] = useState(initYear);
   const [jumpOpen, setJumpOpen] = useState(false);
 
   const totalWeeks = useMemo(() => isoWeeksInYear(year), [year]);
@@ -383,7 +447,10 @@ export default function WorkingHours() {
     });
   }, [year, week]);
 
-  const isCurrentWeek = init.week === week && init.year === year;
+  const isCurrentWeek = useMemo(() => {
+    const now = currentISOWeek();
+    return now.week === week && now.year === year;
+  }, [week, year]);
 
   function prevWeek() {
     if (week > 1) setWeek(w => w - 1);
@@ -419,6 +486,38 @@ export default function WorkingHours() {
     URL.revokeObjectURL(url);
   }
 
+  function exportPDF() {
+    const header = ['Day', 'Date', 'Time In', 'Break Start', 'Break Stop', 'Time Out', 'Net Hours'];
+    const rows = DAYS.map((day, i) => {
+      const e = weekData[day] || {};
+      return [day, fmtDate(weekDates[i]), e.timeIn || '–', e.breakStart || '–', e.breakStop || '–', e.timeOut || '–', fmtMins(netMinsPerDay[i])];
+    });
+    rows.push(['', 'TOTAL', '', '', '', '', fmtMins(totalMins)]);
+
+    const colWidths = ['8%', '12%', '15%', '15%', '15%', '15%', '12%'];
+    const headerRow = header.map((h, i) => `<th style="width:${colWidths[i]};padding:8px 10px;background:#f3f4f6;border:1px solid #d1d5db;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;font-weight:600;">${h}</th>`).join('');
+    const bodyRows = rows.map((r, ri) => {
+      const isTotal = ri === rows.length - 1;
+      const bg = isTotal ? '#f9fafb' : ri % 2 === 0 ? '#ffffff' : '#f9fafb';
+      const fw = isTotal ? '700' : '400';
+      return `<tr>${r.map((cell, ci) => `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};font-weight:${ci === 6 || isTotal ? fw : '400'};color:${isTotal && ci === 6 ? '#059669' : '#111827'};">${cell}</td>`).join('')}</tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Working Hours – ${weekKey}</title>
+<style>body{font-family:Arial,sans-serif;margin:24px;color:#111827;}h2{margin:0 0 4px;font-size:16px;}p{margin:0 0 14px;font-size:12px;color:#6b7280;}table{border-collapse:collapse;width:100%;}@media print{body{margin:12px;}}</style>
+</head><body>
+<h2>Working Hours &mdash; ${weekKey}</h2>
+<p>${rangeLabel}</p>
+<table><thead><tr>${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table>
+</body></html>`;
+
+    const w = window.open('', '_blank', 'width=900,height=650');
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.onload = () => { w.focus(); w.print(); };
+  }
+
   const rangeLabel = weekDates.length === 6
     ? `${fmtDate(weekDates[0])} – ${fmtDate(weekDates[5])}`
     : '';
@@ -434,19 +533,35 @@ export default function WorkingHours() {
             Personal time tracker &middot; {use12h ? '12-hour' : '24-hour'} format
           </p>
         </div>
-        <button
-          onClick={exportCSV}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700
-            text-white font-semibold text-sm rounded-xl shadow-md shadow-emerald-600/20
-            focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-gray-950
-            transition flex-shrink-0"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-          Export Week CSV
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={exportCSV}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700
+              text-white font-semibold text-sm rounded-xl shadow-md shadow-emerald-600/20
+              focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-gray-950
+              transition"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Export CSV
+          </button>
+          <button
+            onClick={exportPDF}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-700 hover:bg-gray-800
+              dark:bg-gray-700 dark:hover:bg-gray-600
+              text-white font-semibold text-sm rounded-xl shadow-md
+              focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-950
+              transition"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
+            Export PDF
+          </button>
+        </div>
       </div>
 
       {/* â”€â”€ Stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
@@ -682,6 +797,13 @@ export default function WorkingHours() {
                       )}>
                         {fmtMins(netMins)}
                       </span>
+                      {isToday && isCurrentWeek && entry.timeIn && !entry.timeOut && (
+                        <LiveNetTimer
+                          timeIn={entry.timeIn}
+                          breakStart={entry.breakStart}
+                          breakStop={entry.breakStop}
+                        />
+                      )}
                     </td>
                   </tr>
                 );

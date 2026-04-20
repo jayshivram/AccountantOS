@@ -38,11 +38,11 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }) {
       <div
         ref={ref}
         className={cn(
-          'relative w-full rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl animate-fade-in',
+          'relative w-full rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl animate-fade-in flex flex-col max-h-[90vh]',
           sizes[size]
         )}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <h2 id="modal-title" className="text-lg font-bold text-gray-900 dark:text-white">{title}</h2>
           <button onClick={onClose} className="btn-ghost p-1.5 rounded-lg" aria-label="Close">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -50,7 +50,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }) {
             </svg>
           </button>
         </div>
-        <div className="px-6 py-5">{children}</div>
+        <div className="px-6 py-5 overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   );

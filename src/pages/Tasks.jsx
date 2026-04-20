@@ -418,12 +418,15 @@ export default function Tasks() {
   const [showCleared, setShowCleared]   = useState('both'); // 'uncleared' | 'cleared' | 'both'
   const [jumpOpen, setJumpOpen]         = useState(false);
 
-  const init = currentISOWeek();
-  const [week, setWeek] = useState(init.week);
-  const [year, setYear] = useState(init.year);
+  const { week: initWeek, year: initYear } = useMemo(() => currentISOWeek(), []);
+  const [week, setWeek] = useState(initWeek);
+  const [year, setYear] = useState(initYear);
 
   const totalWeeks    = useMemo(() => isoWeeksInYear(year), [year]);
-  const isCurrentWeek = init.week === week && init.year === year;
+  const isCurrentWeek = useMemo(() => {
+    const now = currentISOWeek();
+    return now.week === week && now.year === year;
+  }, [week, year]);
 
   const { weekMon, weekSun, rangeLabel } = useMemo(() => {
     const mon = getMondayOfISOWeek(year, week);
@@ -440,7 +443,7 @@ export default function Tasks() {
     if (week < totalWeeks) setWeek(w => w + 1);
     else { setYear(y => y + 1); setWeek(1); }
   }
-  function goToCurrentWeek() { setWeek(init.week); setYear(init.year); }
+  function goToCurrentWeek() { const now = currentISOWeek(); setWeek(now.week); setYear(now.year); }
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -510,6 +513,69 @@ export default function Tasks() {
 
   const activeTasks = allTasks.filter(t => t.status !== 'completed').length;
 
+  function exportCSV() {
+    const headers = ['Title', 'Client', 'Tax Type', 'Due Date', 'Status', 'Priority', 'Category', 'Description'];
+    const tasksToExport = weekTasks;
+    const csvRows = tasksToExport.map(t => {
+      const client = clients.find(c => c.id === t.clientId);
+      return [
+        `"${(t.title || '').replace(/"/g, '""')}"`,
+        `"${client ? client.name : ''}"`,
+        `"${t.taxType ? (TAX_TYPES[t.taxType] || t.taxType) : ''}"`,
+        `"${t.dueDate ? formatDate(t.dueDate) : ''}"`,
+        `"${(t.status || 'pending').replace('_', ' ')}"`,
+        `"${t.priority || 'medium'}"`,
+        `"${(t.category || '').replace(/"/g, '""')}"`,
+        `"${(t.description || '').replace(/"/g, '""')}"`,
+      ].join(',');
+    });
+    const csv = [headers.map(h => `"${h}"`).join(','), ...csvRows].join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const a   = Object.assign(document.createElement('a'), { href: url, download: `tasks-${year}-W${String(week).padStart(2, '0')}.csv` });
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportPDF() {
+    const headers = ['Title', 'Client', 'Tax Type', 'Due Date', 'Status', 'Priority'];
+    const colWidths = ['30%', '18%', '12%', '12%', '14%', '10%'];
+    const tasksToExport = weekTasks;
+
+    const headerRow = headers.map((h, i) => `<th style="width:${colWidths[i]};padding:8px 10px;background:#f3f4f6;border:1px solid #d1d5db;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;font-weight:600;">${h}</th>`).join('');
+
+    const statusLabel = s => (s || 'pending').replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const priorityColor = p => p === 'high' ? '#dc2626' : p === 'medium' ? '#d97706' : '#6b7280';
+
+    const bodyRows = tasksToExport.map((t, ri) => {
+      const client = clients.find(c => c.id === t.clientId);
+      const bg = ri % 2 === 0 ? '#ffffff' : '#f9fafb';
+      const isDone = t.status === 'completed';
+      const cells = [
+        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};${isDone ? 'text-decoration:line-through;color:#9ca3af;' : 'color:#111827;'}">${t.title}</td>`,
+        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};color:#374151;">${client ? client.name : '–'}</td>`,
+        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};color:#374151;">${t.taxType ? (TAX_TYPES[t.taxType] || t.taxType) : '–'}</td>`,
+        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};color:#374151;">${t.dueDate ? formatDate(t.dueDate) : '–'}</td>`,
+        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};color:#374151;">${statusLabel(t.status)}</td>`,
+        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};color:${priorityColor(t.priority)};font-weight:600;text-transform:uppercase;">${t.priority || 'medium'}</td>`,
+      ];
+      return `<tr>${cells.join('')}</tr>`;
+    }).join('') || `<tr><td colspan="6" style="padding:16px;text-align:center;color:#9ca3af;font-size:12px;border:1px solid #e5e7eb;">No tasks this week</td></tr>`;
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Tasks – Week ${week} · ${year}</title>
+<style>body{font-family:Arial,sans-serif;margin:24px;color:#111827;}h2{margin:0 0 4px;font-size:16px;}p{margin:0 0 14px;font-size:12px;color:#6b7280;}table{border-collapse:collapse;width:100%;}@media print{body{margin:12px;}}</style>
+</head><body>
+<h2>Tasks &mdash; Week ${week} &middot; ${year}</h2>
+<p>${rangeLabel}</p>
+<table><thead><tr>${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table>
+</body></html>`;
+
+    const w = window.open('', '_blank', 'width=900,height=650');
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.onload = () => { w.focus(); w.print(); };
+  }
+
   // Shared table header
   const Thead = () => (
     <thead>
@@ -554,9 +620,29 @@ export default function Tasks() {
           <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">Tasks</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">{activeTasks} active tasks</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <KeyboardHint shortcut="N" label="new task" />
           <KeyboardHint shortcut="D" label="mark done" />
+          <button
+            onClick={exportCSV}
+            title="Export this week's tasks as CSV"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            CSV
+          </button>
+          <button
+            onClick={exportPDF}
+            title="Export this week's tasks as PDF"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
+            PDF
+          </button>
           <button onClick={() => setShowAdd(true)} className="btn-primary">+ New Task</button>
         </div>
       </div>
