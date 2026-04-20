@@ -61,7 +61,7 @@ function DeadlineCard({ deadline }) {
 
 function TodayTasksWidget({ onNavigate }) {
   const { state, dispatch } = useApp();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toLocaleDateString('en-CA');  // local YYYY-MM-DD
 
   const todayTasks = useMemo(() =>
     state.tasks.filter(t => t.dueDate && t.dueDate.slice(0, 10) === today && t.status !== 'completed')
@@ -151,17 +151,25 @@ function QuickStats() {
   const { state } = useApp();
   const deadlines = useMemo(() => {
     const all = getUpcomingDeadlines(365);
-    return all.filter(d => state.clients.some(c => c.taxTypes.includes(d.type)));
-  }, [state.clients]);
+    return all.filter(d => {
+      if (d.type === 'WHT') {
+        // WHT is on-demand: only show if at least one actual WHT record exists for this period
+        return state.taxReturns.some(tr => tr.taxType === 'WHT' && tr.period === d.period);
+      }
+      return state.clients.some(c => c.taxTypes.includes(d.type));
+    });
+  }, [state.clients, state.taxReturns]);
 
   const totalClients   = state.clients.filter(c => !c.hidden).length;
   const hiddenClients  = state.clients.filter(c => c.hidden).length;
   const pendingTasks   = state.tasks.filter(t => t.status !== 'completed').length;
-  const today          = new Date().toISOString().slice(0, 10);
+  const today          = new Date().toLocaleDateString('en-CA');  // local YYYY-MM-DD
   // Count truly overdue deadlines: past due AND at least one client still pending
   const overdueDeadlines = deadlines.filter(d => {
     if (d.daysRemaining >= 0) return false;
-    const total = state.clients.filter(c => c.taxTypes.includes(d.type)).length;
+    const total = d.type === 'WHT'
+      ? state.taxReturns.filter(tr => tr.taxType === 'WHT' && tr.period === d.period).length
+      : state.clients.filter(c => c.taxTypes.includes(d.type)).length;
     const completed = state.taxReturns.filter(
       tr => tr.taxType === d.type && tr.period === d.period && tr.status === 'completed'
     ).length;
@@ -202,7 +210,12 @@ function ClientHeatmap({ deadlines }) {
 
   if (!activeDeadline) return null;
 
-  const relevantClients = state.clients.filter(c => c.taxTypes.includes(activeDeadline.type));
+  // WHT is on-demand: relevantClients = those with actual records, not just registered
+  const relevantClients = activeDeadline.type === 'WHT'
+    ? state.clients.filter(c =>
+        state.taxReturns.some(tr => tr.clientId === c.id && tr.taxType === 'WHT' && tr.period === activeDeadline.period)
+      )
+    : state.clients.filter(c => c.taxTypes.includes(activeDeadline.type));
   const completedSet = new Set(
     state.taxReturns
       .filter(tr => tr.taxType === activeDeadline.type && tr.period === activeDeadline.period && tr.status === 'completed')
@@ -292,10 +305,16 @@ export default function Dashboard({ onNavigate }) {
   const { state } = useApp();
 
   // Only show deadlines for tax types that at least one client has
+  // WHT is on-demand: only show if actual WHT records exist for that period
   const deadlines = useMemo(() => {
     const all = getUpcomingDeadlines(365);
-    return all.filter(d => state.clients.some(c => c.taxTypes.includes(d.type)));
-  }, [state.clients]);
+    return all.filter(d => {
+      if (d.type === 'WHT') {
+        return state.taxReturns.some(tr => tr.taxType === 'WHT' && tr.period === d.period);
+      }
+      return state.clients.some(c => c.taxTypes.includes(d.type));
+    });
+  }, [state.clients, state.taxReturns]);
 
   const now = new Date();
   const currentMonth = now.getMonth();
@@ -304,7 +323,9 @@ export default function Dashboard({ onNavigate }) {
   // Overdue = past due + at least one client still pending
   const overdue = useMemo(() => deadlines.filter(d => {
     if (d.daysRemaining >= 0) return false;
-    const total = state.clients.filter(c => c.taxTypes.includes(d.type)).length;
+    const total = d.type === 'WHT'
+      ? state.taxReturns.filter(tr => tr.taxType === 'WHT' && tr.period === d.period).length
+      : state.clients.filter(c => c.taxTypes.includes(d.type)).length;
     if (total === 0) return false;
     const completed = state.taxReturns.filter(
       tr => tr.taxType === d.type && tr.period === d.period && tr.status === 'completed'

@@ -9,47 +9,115 @@ import {
 
 // ─── Tax Return Checklist Modal ───────────────────────────────────────────────
 
-// All tax types share the same 4 base checklist items + payslip confirmation
-const BASE_CHECKLIST = ['returnSubmitted', 'screenshotTaken', 'paymentConfirmed', 'returnDownloaded'];
-
-const ITEM_LABELS = {
-  returnSubmitted:  'Return Submitted',
-  screenshotTaken:  'Screenshot Taken (Proof)',
-  paymentConfirmed: 'Payment Confirmed',
-  returnDownloaded: 'Return Downloaded',
-};
-
-const TOTAL_ITEMS = BASE_CHECKLIST.length + 1; // +1 for payslip/client notification
-
-// value: true = done, 'nil' = not applicable, null/false = pending
-function isAddressed(v) {
-  return v === true || v === 'nil';
+// ── Per-type checklist definitions ──
+function getChecklistForType(type, quarter) {
+  switch (type) {
+    case 'VAT':
+      return [
+        { key: 'excelDone',        label: 'Excel Done',        doneVal: true   },
+        { key: 'returnSubmitted',  label: 'Submitted',          doneVal: true   },
+        { key: 'payslipStatus',    label: 'Payslip Status',     doneVal: 'sent' },
+        { key: 'returnDownloaded', label: 'R, A & A',           doneVal: true   },
+        { key: 'screenshotTaken',  label: 'Screenshot',         doneVal: true   },
+      ];
+    case 'PAYE':
+    case 'SDL':
+      return [
+        { key: 'returnSubmitted',  label: 'Submitted',          doneVal: true   },
+        { key: 'payslipStatus',    label: 'Payslip Status',     doneVal: 'sent' },
+        { key: 'returnDownloaded', label: 'R, A & A',           doneVal: true   },
+        { key: 'screenshotTaken',  label: 'Screenshot',         doneVal: true   },
+      ];
+    case 'CITY_LEVY':
+      return [
+        { key: 'payslipMade',      label: 'Payslip Made',       doneVal: true   },
+        { key: 'payslipStatus',    label: 'Sent to Client',     doneVal: 'sent' },
+        { key: 'savedToServer',    label: 'Saved in Server',    doneVal: true   },
+        { key: 'paymentConfirmed', label: 'Payment Status',     doneVal: true   },
+      ];
+    case 'PROVISIONAL':
+      return [
+        ...(quarter === 1 ? [{ key: 'returnSubmitted', label: 'Return Filled', doneVal: true }] : []),
+        { key: 'payslipMade',      label: 'Payslip Made',       doneVal: true, },
+        { key: 'payslipStatus',    label: 'Sent to Client',     doneVal: 'sent' },
+        { key: 'paymentConfirmed', label: 'Payment Status',     doneVal: true   },
+        { key: 'revised',          label: 'Revised',            doneVal: true, isRevised: true },
+      ];
+    case 'NSSF':
+    case 'WCF':
+      return [
+        { key: 'payslipStatus',    label: 'Sent to Client',     doneVal: 'sent' },
+        { key: 'savedToServer',    label: 'Saved to Server',    doneVal: true   },
+      ];
+    case 'WHT':
+      return [
+        { key: 'returnSubmitted',  label: 'Return Filled',      doneVal: true   },
+      ];
+    case 'ROI':
+      return [
+        { key: 'returnSubmitted',  label: 'Return Submitted',   doneVal: true   },
+        { key: 'screenshotTaken',  label: 'Screenshot',         doneVal: true   },
+        { key: 'paymentConfirmed', label: 'Payment Confirmed',  doneVal: true   },
+        { key: 'returnDownloaded', label: 'Return Downloaded',  doneVal: true   },
+        { key: 'payslipStatus',    label: 'Sent to Client',     doneVal: 'sent' },
+      ];
+    default:
+      return [
+        { key: 'returnSubmitted',  label: 'Return Submitted',   doneVal: true   },
+        { key: 'screenshotTaken',  label: 'Screenshot',         doneVal: true   },
+        { key: 'paymentConfirmed', label: 'Payment Confirmed',  doneVal: true   },
+        { key: 'returnDownloaded', label: 'Return Downloaded',  doneVal: true   },
+        { key: 'payslipStatus',    label: 'Sent to Client',     doneVal: 'sent' },
+      ];
+  }
 }
 
-function countAddressed(rec) {
-  const items = BASE_CHECKLIST.filter(k => isAddressed(rec?.[k])).length;
-  const payslip = rec?.payslipStatus === 'sent' || rec?.payslipStatus === 'nil' ? 1 : 0;
-  return items + payslip;
+function isItemAddressed(item, val) {
+  return val === item.doneVal || val === 'nil';
 }
 
-// ── 3-state checklist item: unchecked → done (✓) → NIL (─) ──
-function ChecklistItem3({ label, value, onChange }) {
-  const isDone = value === true;
+function countAddressed(rec, checklist) {
+  return checklist.filter(item => isItemAddressed(item, rec?.[item.key])).length;
+}
+
+// ── Due date label helper ──
+function getDueDateLabel(type, selYear, selMonth, quarter) {
+  try {
+    let d;
+    switch (type) {
+      case 'VAT':        d = new Date(selYear, selMonth + 1, 20); break;
+      case 'PAYE': case 'SDL': case 'WHT': d = new Date(selYear, selMonth + 1, 7);  break;
+      case 'NSSF': case 'WCF': d = new Date(selYear, selMonth + 1, 30); break;
+      case 'ROI':        d = new Date(selYear, 5, 30); break;
+      case 'PROVISIONAL': case 'CITY_LEVY': {
+        const qEnds = [new Date(selYear,2,31), new Date(selYear,5,30), new Date(selYear,8,30), new Date(selYear,11,31)];
+        d = qEnds[(quarter || 1) - 1];
+        break;
+      }
+      default: return null;
+    }
+    return format(d, 'dd/MM/yyyy');
+  } catch { return null; }
+}
+
+// ── 3-state checklist item: unchecked → done ✓ → NIL ──
+function ChecklistItem3({ label, value, onChange, doneVal = true }) {
+  const isDone = value === doneVal;
   const isNil  = value === 'nil';
   return (
     <div className="flex items-center gap-2 text-sm py-0.5">
       <button
         type="button"
-        onClick={() => onChange(isDone ? null : true)}
+        onClick={() => onChange(isDone ? null : doneVal)}
         className={cn(
           'flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
           isDone ? 'bg-green-500 border-green-500 text-white'
-            : isNil ? 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+            : isNil ? 'border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700'
             : 'border-gray-400 dark:border-gray-600 hover:border-green-500'
         )}
       >
-        {isDone && <span className="text-[10px] leading-none font-bold">✓</span>}
-        {isNil  && <span className="text-[10px] leading-none font-bold">─</span>}
+        {isDone && <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+        {isNil  && <span className="text-[10px] leading-none font-bold text-gray-400 dark:text-gray-500">─</span>}
       </button>
       <span className={cn(
         'flex-1 leading-snug',
@@ -75,49 +143,15 @@ function ChecklistItem3({ label, value, onChange }) {
   );
 }
 
-function ClientCopyToggle({ value, onChange }) {
-  return (
-    <div className="flex items-center gap-2 pt-1">
-      <span className="text-sm font-medium text-gray-600 dark:text-gray-300 flex-shrink-0">Client Copy:</span>
-      <button
-        type="button"
-        onClick={() => onChange(value === 'nil' ? null : 'nil')}
-        className={cn(
-          'text-xs px-2.5 py-1 rounded-lg border font-semibold transition-all',
-          value === 'nil'
-            ? 'bg-gray-500 dark:bg-gray-600 border-gray-500 text-white'
-            : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-400'
-        )}
-      >
-        NIL
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange(value === 'sent' ? null : 'sent')}
-        className={cn(
-          'text-xs px-2.5 py-1 rounded-lg border font-semibold transition-all',
-          value === 'sent'
-            ? 'bg-green-600 border-green-500 text-white'
-            : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-400'
-        )}
-      >
-        Sent to Client
-      </button>
-      {value && (
-        <button type="button" onClick={() => onChange(null)} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
-      )}
-    </div>
-  );
-}
-
 function TaxReturnModal({ client, isOpen, onClose }) {
   const { state, dispatch } = useApp();
+  const [deletingRecord, setDeletingRecord] = useState(null);
 
   const now = new Date();
 
-  // Build a window of months: 3 months back → current → 2 months forward
+  // Build a window of months: 3 months back → current → 8 months forward (full year ahead)
   const months = [];
-  for (let offset = -3; offset <= 2; offset++) {
+  for (let offset = -3; offset <= 8; offset++) {
     let month = now.getMonth() + offset;
     let year  = now.getFullYear();
     while (month < 0)  { month += 12; year--; }
@@ -125,7 +159,6 @@ function TaxReturnModal({ client, isOpen, onClose }) {
     months.push({ month, year });
   }
 
-  // Default to previous month (most commonly filing for last month)
   const defaultIdx = months.findIndex(m => {
     const prevM = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
     const prevY = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
@@ -141,32 +174,50 @@ function TaxReturnModal({ client, isOpen, onClose }) {
     ) || { status: 'pending', notes: '' };
   }
 
-  function upsert(taxType, period, changes) {
+  function upsert(taxType, period, changes, checklist) {
     const current = getRecord(taxType, period);
-    dispatch({
-      type: 'UPSERT_TAX_RETURN',
-      payload: { clientId: client.id, taxType, period, ...current, ...changes },
-    });
+    const merged  = { clientId: client.id, taxType, period, ...current, ...changes };
+    // Auto-complete: when all items addressed, set status = completed
+    if (checklist) {
+      const allDone = checklist.every(item => isItemAddressed(item, merged[item.key]));
+      if (allDone && merged.status !== 'completed') {
+        merged.status      = 'completed';
+        merged.completedAt = new Date().toISOString();
+      } else if (!allDone && merged.status === 'completed') {
+        merged.status      = 'in_progress';
+        delete merged.completedAt;
+      }
+    }
+    dispatch({ type: 'UPSERT_TAX_RETURN', payload: merged });
   }
 
-  // Determine which taxes apply to the selected month
-  const isQuarterEnd = [2, 5, 8, 11].includes(selMonth); // Mar, Jun, Sep, Dec
-  const quarter = Math.floor(selMonth / 3) + 1;
-  const monthPeriod = `${selYear}-${String(selMonth).padStart(2, '0')}`;
+  const isQuarterEnd = [2, 5, 8, 11].includes(selMonth);
+  const quarter      = Math.floor(selMonth / 3) + 1;
+  const monthPeriod  = `${selYear}-${String(selMonth).padStart(2, '0')}`;
+
+  // WHT: only shown if a record already exists (created on-demand)
+  const hasWHTRecord = state.taxReturns.some(
+    tr => tr.clientId === client.id && tr.taxType === 'WHT' && tr.period === monthPeriod
+  );
 
   const applicableItems = [
-    ...['VAT', 'PAYE', 'SDL', 'WHT', 'NSSF', 'WCF']
+    ...['VAT', 'PAYE', 'SDL', 'NSSF', 'WCF']
       .filter(t => client.taxTypes.includes(t))
-      .map(type => ({ type, period: monthPeriod })),
+      .map(type => ({ type, period: monthPeriod, quarter: null })),
+    ...(client.taxTypes.includes('WHT') && hasWHTRecord
+      ? [{ type: 'WHT', period: monthPeriod, quarter: null }] : []),
     ...(isQuarterEnd && client.taxTypes.includes('PROVISIONAL')
-      ? [{ type: 'PROVISIONAL', period: `${selYear}-Q${quarter}` }] : []),
+      ? [{ type: 'PROVISIONAL', period: `${selYear}-Q${quarter}`, quarter }] : []),
     ...(isQuarterEnd && client.taxTypes.includes('CITY_LEVY')
-      ? [{ type: 'CITY_LEVY', period: `${selYear}-Q${quarter}` }] : []),
+      ? [{ type: 'CITY_LEVY', period: `${selYear}-Q${quarter}`, quarter }] : []),
     ...(selMonth === 5 && client.taxTypes.includes('ROI')
-      ? [{ type: 'ROI', period: `${selYear - 1}-annual` }] : []),
+      ? [{ type: 'ROI', period: `${selYear - 1}-annual`, quarter: null }] : []),
   ];
 
+  const showWHTButton = client.taxTypes.includes('WHT') && !hasWHTRecord;
+
   return (
+    <>
     <Modal isOpen={isOpen} onClose={onClose} title={`${client.name} — Filings`} size="xl">
       {/* Month Tabs */}
       <div className="flex gap-1.5 overflow-x-auto pb-3 mb-4 border-b border-gray-200 dark:border-gray-700 scrollbar-hide">
@@ -186,7 +237,7 @@ function TaxReturnModal({ client, isOpen, onClose }) {
         ))}
       </div>
 
-      {/* Month label & due-date hint */}
+      {/* Month label */}
       <div className="mb-4">
         <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200">
           {format(new Date(selYear, selMonth, 1), 'MMMM yyyy')} filings
@@ -200,102 +251,168 @@ function TaxReturnModal({ client, isOpen, onClose }) {
 
       {/* Tax items */}
       <div className="space-y-4 max-h-[58vh] overflow-y-auto pr-1">
-        {applicableItems.length === 0 ? (
+        {applicableItems.length === 0 && !showWHTButton ? (
           <p className="text-sm text-gray-500 text-center py-10 italic">No applicable filings for this month.</p>
         ) : (
-          applicableItems.map(({ type, period }) => {
-            const rec = getRecord(type, period);
-            const done = countAddressed(rec);
-            const allChecked = done >= TOTAL_ITEMS;
+          <>
+            {applicableItems.map(({ type, period, quarter: itemQuarter }) => {
+              const rec       = getRecord(type, period);
+              const checklist = getChecklistForType(type, itemQuarter);
+              const done      = countAddressed(rec, checklist);
+              const allChecked = done === checklist.length && checklist.length > 0;
+              const dueDateLabel = getDueDateLabel(type, selYear, selMonth, itemQuarter || quarter);
 
-            return (
-              <div key={`${type}-${period}`} className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                {/* Header */}
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2">
-                    <TaxTypeBadge type={type} />
-                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{TAX_TYPES[type]}</span>
-                    {type === 'ROI' && (
-                      <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 px-1.5 py-0.5 rounded font-medium">
-                        Annual · Due 30 Jun {selYear}
-                      </span>
-                    )}
-                    {type === 'PROVISIONAL' && (
-                      <span className="text-[10px] bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-300 px-1.5 py-0.5 rounded font-medium">
-                        Q{quarter} {selYear}
-                      </span>
-                    )}
-                    {type === 'CITY_LEVY' && (
-                      <span className="text-[10px] bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-300 px-1.5 py-0.5 rounded font-medium">
-                        Q{quarter} {selYear}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500">{done}/{TOTAL_ITEMS} done</span>
-                    <StatusBadge status={allChecked ? 'completed' : rec.status} />
-                  </div>
-                </div>
+              function handleChange(key, val) {
+                upsert(type, period, { [key]: val }, getChecklistForType(type, itemQuarter));
+              }
 
-                {/* Progress bar */}
-                <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full mb-3 overflow-hidden">
-                  <div
-                    className={cn(
-                      'h-full rounded-full transition-all duration-500',
-                      allChecked ? 'bg-green-500' : done > 0 ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
-                    )}
-                    style={{ width: `${(done / TOTAL_ITEMS) * 100}%` }}
-                  />
-                </div>
+              function handleAllNil() {
+                const nilPayload = {};
+                checklist.forEach(item => { nilPayload[item.key] = 'nil'; });
+                upsert(type, period, nilPayload, checklist);
+              }
 
-                {/* Status buttons */}
-                <div className="flex gap-1.5 mb-3">
-                  {['pending', 'in_progress', 'completed'].map(s => (
-                    <button
-                      key={s}
-                      onClick={() => upsert(type, period, { status: s, ...(s === 'completed' ? { completedAt: new Date().toISOString() } : {}) })}
-                      className={cn(
-                        'text-xs px-2.5 py-1 rounded-lg border transition-all font-medium',
-                        rec.status === s
-                          ? 'bg-blue-600 border-blue-500 text-white'
-                          : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white'
+              return (
+                <div key={`${type}-${period}`} className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                  {/* Section Header */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <TaxTypeBadge type={type} />
+                      <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{TAX_TYPES[type]}</span>
+                      {(type === 'PROVISIONAL' || type === 'CITY_LEVY') && itemQuarter && (
+                        <span className={cn(
+                          'text-[10px] px-1.5 py-0.5 rounded font-medium',
+                          type === 'PROVISIONAL'
+                            ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-300'
+                            : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-300'
+                        )}>
+                          Q{itemQuarter} {selYear}
+                        </span>
                       )}
-                    >
-                      {s === 'in_progress' ? 'In Progress' : s.charAt(0).toUpperCase() + s.slice(1)}
-                    </button>
-                  ))}
-                </div>
+                      {type === 'ROI' && (
+                        <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 px-1.5 py-0.5 rounded font-medium">
+                          Annual
+                        </span>
+                      )}
+                      {dueDateLabel && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 font-medium">
+                          Due {dueDateLabel}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {rec.id && (
+                        <button
+                          type="button"
+                          onClick={() => setDeletingRecord({ id: rec.id, taxType: type, period })}
+                          title="Remove this filing record"
+                          className="text-[11px] px-2 py-0.5 rounded border font-semibold transition-all text-red-400 dark:text-red-500 border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        >
+                          Remove
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleAllNil}
+                        title="Mark all items as NIL for this period"
+                        className="text-[11px] px-2 py-0.5 rounded border font-semibold transition-all text-gray-400 dark:text-gray-500 border-gray-300 dark:border-gray-600 hover:text-gray-600 dark:hover:text-gray-300 hover:border-gray-400"
+                      >
+                        All NIL
+                      </button>
+                      <span className="text-xs text-gray-500">{done}/{checklist.length}</span>
+                      <StatusBadge status={allChecked ? 'completed' : rec.status} />
+                    </div>
+                  </div>
 
-                {/* Checklist */}
-                <div className="space-y-1 mb-3">
-                  {BASE_CHECKLIST.map(key => (
-                    <ChecklistItem3
-                      key={key}
-                      label={ITEM_LABELS[key]}
-                      value={rec[key]}
-                      onChange={v => upsert(type, period, { [key]: v })}
+                  {/* Progress bar */}
+                  <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full mb-3 overflow-hidden">
+                    <div
+                      className={cn(
+                        'h-full rounded-full transition-all duration-500',
+                        allChecked ? 'bg-green-500' : done > 0 ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
+                      )}
+                      style={{ width: checklist.length > 0 ? `${(done / checklist.length) * 100}%` : '0%' }}
                     />
-                  ))}
-                </div>
+                  </div>
 
-                {/* Client Copy */}
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2">
-                  <ClientCopyToggle
-                    value={rec.payslipStatus || null}
-                    onChange={v => upsert(type, period, { payslipStatus: v })}
+                  {/* Manual status override */}
+                  {!allChecked && (
+                    <div className="flex gap-1.5 mb-3">
+                      {['pending', 'in_progress', 'completed'].map(s => (
+                        <button
+                          key={s}
+                          onClick={() => upsert(type, period, { status: s, ...(s === 'completed' ? { completedAt: new Date().toISOString() } : {}) })}
+                          className={cn(
+                            'text-xs px-2.5 py-1 rounded-lg border transition-all font-medium',
+                            rec.status === s
+                              ? 'bg-blue-600 border-blue-500 text-white'
+                              : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white'
+                          )}
+                        >
+                          {s === 'in_progress' ? 'In Progress' : s.charAt(0).toUpperCase() + s.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Checklist items */}
+                  <div className="space-y-1 mb-3">
+                    {checklist.map(item => (
+                      <ChecklistItem3
+                        key={item.key}
+                        label={item.label}
+                        value={rec[item.key] ?? null}
+                        doneVal={item.doneVal}
+                        onChange={val => handleChange(item.key, val)}
+                      />
+                    ))}
+                  </div>
+
+                  {/* PROVISIONAL: revision reminder banner */}
+                  {type === 'PROVISIONAL' && rec.revised === true && (
+                    <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/40 mb-2 mt-1">
+                      <svg className="w-4 h-4 text-yellow-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                      </svg>
+                      <p className="text-xs text-yellow-800 dark:text-yellow-300 font-medium">
+                        Revision saved — remember to re-confirm payment with client after revision.
+                      </p>
+                    </div>
+                  )}
+                  {type === 'PROVISIONAL' && rec.revised === true && (
+                    <textarea
+                      className="input text-xs h-12 resize-none mb-2"
+                      placeholder="Revision note (e.g. revised amount, reason)..."
+                      value={rec.revisionNote || ''}
+                      onChange={e => upsert(type, period, { revisionNote: e.target.value })}
+                    />
+                  )}
+
+                  {/* Notes */}
+                  <textarea
+                    className="input text-xs h-10 resize-none"
+                    placeholder="Notes..."
+                    value={rec.notes || ''}
+                    onChange={e => upsert(type, period, { notes: e.target.value })}
                   />
                 </div>
+              );
+            })}
 
-                {/* Notes */}
-                <textarea
-                  className="input text-xs h-10 resize-none mt-3"
-                  placeholder="Notes..."
-                  value={rec.notes || ''}
-                  onChange={e => upsert(type, period, { notes: e.target.value })}
-                />
-              </div>
-            );
-          })
+            {/* WHT on-demand button */}
+            {showWHTButton && (
+              <button
+                type="button"
+                onClick={() => upsert('WHT', monthPeriod, { status: 'pending' }, null)}
+                className="w-full py-3 rounded-xl border-2 border-dashed border-rose-300 dark:border-rose-700/50 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/10 text-sm font-semibold transition-all flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add WHT for {format(new Date(selYear, selMonth, 1), 'MMMM yyyy')}
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -303,6 +420,19 @@ function TaxReturnModal({ client, isOpen, onClose }) {
         <button onClick={onClose} className="btn-secondary w-full">Close</button>
       </div>
     </Modal>
+    {deletingRecord && (
+      <ConfirmDialog
+        isOpen
+        title="Remove Filing Record"
+        message={`Remove the ${deletingRecord.taxType} record for ${deletingRecord.period}? This cannot be undone.`}
+        onClose={() => setDeletingRecord(null)}
+        onConfirm={() => {
+          dispatch({ type: 'DELETE_TAX_RETURN', payload: deletingRecord.id });
+          setDeletingRecord(null);
+        }}
+      />
+    )}
+    </>
   );
 }
 

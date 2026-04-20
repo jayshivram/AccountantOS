@@ -29,10 +29,12 @@ function StatusPill({ status }) {
     in_progress: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700/50',
     completed:   'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border border-green-300 dark:border-green-700/50',
   };
-  const labels = { not_started: '○ Not Started', in_progress: '⟳ In Progress', completed: '✓ Completed' };
   return (
-    <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full', map[status])}>
-      {labels[status]}
+    <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1', map[status])}>
+      {status === 'not_started' && <span className="opacity-60 text-[9px]">○</span>}
+      {status === 'in_progress' && <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+      {status === 'completed'   && <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+      {status === 'not_started' ? 'Not Started' : status === 'in_progress' ? 'In Progress' : 'Completed'}
     </span>
   );
 }
@@ -107,24 +109,36 @@ function ClientTallyCard({ client, year }) {
       {/* Expanded checklist */}
       {expanded && (
         <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 pt-3 space-y-2">
-          {TALLY_TASKS.map(t => (
-            <label
-              key={t.key}
-              className="flex items-center gap-3 cursor-pointer group py-1"
-              onClick={e => e.stopPropagation()}
-            >
-              <input
-                type="checkbox"
-                checked={!!rec?.[t.key]}
-                onChange={e => toggle(t.key, e.target.checked)}
-                className="checkbox-lg"
-              />
-              <span className="text-sm text-gray-600 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">
-                {t.icon} {t.label}
-              </span>
-              {rec?.[t.key] && <span className="ml-auto text-xs text-green-600 dark:text-green-400 font-semibold">✓</span>}
-            </label>
-          ))}
+          {TALLY_TASKS.map(t => {
+            const isChecked = !!rec?.[t.key];
+            return (
+              <div
+                key={t.key}
+                onClick={e => { e.stopPropagation(); toggle(t.key, !isChecked); }}
+                className="flex items-center gap-3 cursor-pointer group py-1"
+              >
+                <button
+                  type="button"
+                  className={cn(
+                    'flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
+                    isChecked
+                      ? 'bg-blue-500 border-blue-500 text-white'
+                      : 'border-gray-400 dark:border-gray-600 group-hover:border-blue-400'
+                  )}
+                >
+                  {isChecked && <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                </button>
+                <span className={cn(
+                  'text-sm transition-colors flex-1',
+                  isChecked
+                    ? 'text-gray-400 dark:text-gray-500 line-through'
+                    : 'text-gray-600 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white'
+                )}>
+                  {t.icon} {t.label}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

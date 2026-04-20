@@ -122,13 +122,21 @@ export function CountdownBadge({ days, large = false }) {
 
 export function StatusBadge({ status }) {
   const map = {
-    completed:   { cls: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border border-green-300 dark:border-green-700/50', label: '✓ Done' },
-    in_progress: { cls: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700/50',   label: '⟳ In Progress' },
-    pending:     { cls: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-300 dark:border-gray-700',         label: '○ Pending' },
-    overdue:     { cls: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700/50',         label: '⚠ Overdue' },
+    completed:   { cls: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border border-green-300 dark:border-green-700/50',   label: 'Done' },
+    in_progress: { cls: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700/50',         label: 'In Progress' },
+    pending:     { cls: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-300 dark:border-gray-700',               label: 'Pending' },
+    overdue:     { cls: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700/50',               label: 'Overdue' },
   };
   const { cls, label } = map[status] || map.pending;
-  return <span className={cn('badge', cls)}>{label}</span>;
+  return (
+    <span className={cn('badge inline-flex items-center gap-1', cls)}>
+      {status === 'completed'   && <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+      {status === 'in_progress' && <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+      {status === 'pending'     && <span className="text-[9px] leading-none opacity-60">●</span>}
+      {status === 'overdue'     && <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>}
+      {label}
+    </span>
+  );
 }
 
 // ─── TaxTypeBadge ─────────────────────────────────────────────────────────────

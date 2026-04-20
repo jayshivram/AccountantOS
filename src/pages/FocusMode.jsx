@@ -32,10 +32,15 @@ function DeadlineCard({ deadline, clients, taxReturns }) {
   const [open, setOpen] = useState(false);
   const days = deadline.daysRemaining;
 
-  // Clients who have this tax type
+  // Clients who have this tax type (WHT is on-demand: only clients with actual records)
   const relevantClients = useMemo(() => {
+    if (deadline.type === 'WHT') {
+      return clients.filter(c =>
+        taxReturns.some(tr => tr.clientId === c.id && tr.taxType === 'WHT' && tr.period === deadline.period)
+      );
+    }
     return clients.filter(c => c.taxTypes && c.taxTypes.includes(deadline.type));
-  }, [clients, deadline.type]);
+  }, [clients, taxReturns, deadline.type, deadline.period]);
 
   // Which have a completed return for this period?
   const completedIds = useMemo(() => {
@@ -203,8 +208,11 @@ export default function FocusMode({ onNavigate }) {
     return getUpcomingDeadlines(7)
       .filter(d => d.daysRemaining <= 7)
       .filter(d => {
-        const total = state.clients.filter(c => c.taxTypes && c.taxTypes.includes(d.type)).length;
-        if (total === 0) return false; // no clients have this tax type
+        // WHT is on-demand: only show if actual records exist for this period
+        const total = d.type === 'WHT'
+          ? state.taxReturns.filter(tr => tr.taxType === 'WHT' && tr.period === d.period).length
+          : state.clients.filter(c => c.taxTypes && c.taxTypes.includes(d.type)).length;
+        if (total === 0) return false;
         // For overdue entries, also hide if every client is already done
         if (d.daysRemaining < 0) {
           const completed = state.taxReturns.filter(

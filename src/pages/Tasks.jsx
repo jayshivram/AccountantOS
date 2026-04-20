@@ -1,4 +1,5 @@
 ﻿import React, { useState, useMemo, useEffect, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { useApp, useClients } from '../context/AppContext.jsx';
 import {
   TAX_TYPES, TAX_TYPE_KEYS, uuid, cn, daysUntil, formatDate,
@@ -165,14 +166,14 @@ function TaskForm({ initial, isOpen, onClose, onSave, clients }) {
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState(() => initial || {
     title: '', description: '', dueDate: today, clientId: '',
-    taxType: '', status: 'pending', priority: 'medium', category: '',
+    taxType: '', status: 'pending', priority: 'medium', category: '', person: '',
   });
 
   // Reset when initial changes
   useEffect(() => {
     setForm(initial || {
       title: '', description: '', dueDate: today, clientId: '',
-      taxType: '', status: 'pending', priority: 'medium', category: '',
+      taxType: '', status: 'pending', priority: 'medium', category: '', person: '',
     });
   }, [initial, isOpen]);
 
@@ -231,6 +232,18 @@ function TaskForm({ initial, isOpen, onClose, onSave, clients }) {
             </select>
           </div>
         </div>
+
+        {!form.clientId && (
+          <div>
+            <label className="label">Who is it for? (optional)</label>
+            <input
+              className="input"
+              value={form.person || ''}
+              onChange={e => set('person', e.target.value)}
+              placeholder="e.g. Ahmed – payroll team, Office manager"
+            />
+          </div>
+        )}
 
         <div>
           <label className="label">Category (optional)</label>
@@ -311,7 +324,7 @@ function TaskRow({ task, clients, onEdit, onDelete, onComplete, onReopen, select
               : 'border-gray-400 hover:border-green-500 hover:bg-green-500/20'
           )}
         >
-          {isDone && <span className="text-[10px] text-white leading-none">âœ“</span>}
+          {isDone && <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
         </button>
       </td>
 
@@ -332,14 +345,17 @@ function TaskRow({ task, clients, onEdit, onDelete, onComplete, onReopen, select
               {task.category}
             </span>
           )}
+          {!client && task.person && (
+            <span className="text-xs text-teal-600 dark:text-teal-400 truncate">{task.person}</span>
+          )}
         </div>
       </td>
 
       {/* Client */}
       <td className="px-3 py-2.5 w-36 align-middle">
-        <span className="text-xs text-gray-600 dark:text-gray-400 truncate block max-w-[130px]">
-          {client ? client.name : <span className="text-gray-300 dark:text-gray-600">–</span>}
-        </span>
+        {client
+          ? <span className="text-xs text-gray-600 dark:text-gray-400 truncate block max-w-[130px]">{client.name}</span>
+          : <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-700/40">General</span>}
       </td>
 
       {/* Due date + countdown */}
@@ -418,6 +434,7 @@ export default function Tasks() {
   const [selectedId, setSelectedId]     = useState(null);
   const [showCleared, setShowCleared]   = useState('both'); // 'uncleared' | 'cleared' | 'both'
   const [jumpOpen, setJumpOpen]         = useState(false);
+  const [activeDay, setActiveDay]       = useState(null); // null = all, 0–6 = Mon–Sun
 
   const { week: initWeek, year: initYear } = useMemo(() => currentISOWeek(), []);
   const [week, setWeek] = useState(initWeek);
@@ -435,6 +452,21 @@ export default function Tasks() {
     sun.setDate(mon.getDate() + 6);
     return { weekMon: mon, weekSun: sun, rangeLabel: `${fmtShortDate(mon)} – ${fmtShortDate(sun)}` };
   }, [year, week]);
+
+  // 7 day objects for the tab bar (Mon–Sun)
+  // Use local date parts (not toISOString which is UTC) to avoid off-by-one in UTC+ timezones
+  const dayDates = useMemo(() => {
+    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return labels.map((label, i) => {
+      const d = new Date(weekMon);
+      d.setDate(weekMon.getDate() + i);
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return { label, dateStr, shortDate: fmtShortDate(d) };
+    });
+  }, [weekMon]);
+
+  // Reset active day when the viewed week changes
+  useEffect(() => { setActiveDay(null); }, [week, year]);
 
   function prevWeek() {
     if (week > 1) setWeek(w => w - 1);
@@ -503,38 +535,60 @@ export default function Tasks() {
       if (showCleared === 'cleared'   && t.status !== 'completed') return false;
       if (showCleared === 'uncleared' && t.status === 'completed') return false;
       if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false;
-      if (filterClient && t.clientId !== filterClient) return false;
+      if (filterClient === '__GENERAL__' && t.clientId) return false;
+      if (filterClient && filterClient !== '__GENERAL__' && t.clientId !== filterClient) return false;
       if (filterType && t.taxType !== filterType) return false;
       return true;
     });
   }
 
-  const filteredWeekTasks = useMemo(() => applyFilters(weekTasks),  [weekTasks,  showCleared, search, filterClient, filterType]);
+  const filteredWeekTasks = useMemo(() => {
+    const base = activeDay !== null
+      ? weekTasks.filter(t => t.dueDate === dayDates[activeDay]?.dateStr)
+      : weekTasks;
+    return applyFilters(base);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekTasks, showCleared, search, filterClient, filterType, activeDay, dayDates]);
   const filteredNoDueTasks = useMemo(() => applyFilters(noDueTasks), [noDueTasks, showCleared, search, filterClient, filterType]);
 
   const activeTasks = allTasks.filter(t => t.status !== 'completed').length;
 
-  function exportCSV() {
-    const headers = ['Title', 'Client', 'Tax Type', 'Due Date', 'Status', 'Priority', 'Category', 'Description'];
-    const tasksToExport = weekTasks;
-    const csvRows = tasksToExport.map(t => {
-      const client = clients.find(c => c.id === t.clientId);
-      return [
-        `"${(t.title || '').replace(/"/g, '""')}"`,
-        `"${client ? client.name : ''}"`,
-        `"${t.taxType ? (TAX_TYPES[t.taxType] || t.taxType) : ''}"`,
-        `"${t.dueDate ? formatDate(t.dueDate) : ''}"`,
-        `"${(t.status || 'pending').replace('_', ' ')}"`,
-        `"${t.priority || 'medium'}"`,
-        `"${(t.category || '').replace(/"/g, '""')}"`,
-        `"${(t.description || '').replace(/"/g, '""')}"`,
-      ].join(',');
+  function exportXLSX() {
+    const wb      = XLSX.utils.book_new();
+    const fmtStatus = s => (s || 'pending').replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const fmtClient = t => { const c = clients.find(cl => cl.id === t.clientId); return c ? c.name : ''; };
+
+    // Sheet 1 — Summary
+    const summaryData = [['Day', 'Date', 'Total', 'Done', 'Pending / In Progress']];
+    dayDates.forEach(({ label, dateStr, shortDate }) => {
+      const tasks = weekTasks.filter(t => t.dueDate === dateStr);
+      const done  = tasks.filter(t => t.status === 'completed').length;
+      summaryData.push([label, shortDate, tasks.length, done, tasks.length - done]);
     });
-    const csv = [headers.map(h => `"${h}"`).join(','), ...csvRows].join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-    const a   = Object.assign(document.createElement('a'), { href: url, download: `tasks-${year}-W${String(week).padStart(2, '0')}.csv` });
-    a.click();
-    URL.revokeObjectURL(url);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), 'Summary');
+
+    // Sheets 2–8 — one per day
+    const dayHeaders = ['#', 'Title', 'Client', 'Tax Type', 'Status', 'Priority', 'Category', 'Person', 'Description'];
+    dayDates.forEach(({ label, dateStr, shortDate }) => {
+      const tasks   = weekTasks.filter(t => t.dueDate === dateStr);
+      const rows    = tasks.map((t, i) => [
+        i + 1,
+        t.title || '',
+        fmtClient(t),
+        t.taxType ? (TAX_TYPES[t.taxType] || t.taxType) : '',
+        fmtStatus(t.status),
+        t.priority || 'medium',
+        t.category || '',
+        t.person || '',
+        t.description || '',
+      ]);
+      const wsData  = [dayHeaders, ...rows];
+      const ws      = XLSX.utils.aoa_to_sheet(wsData);
+      ws['!cols']   = [4, 35, 22, 12, 12, 10, 18, 18, 35].map(w => ({ wch: w }));
+      XLSX.utils.book_append_sheet(wb, ws, `${label} ${shortDate}`);
+    });
+
+    XLSX.writeFile(wb, `tasks-${year}-W${String(week).padStart(2, '0')}.xlsx`);
   }
 
   function exportPDF() {
@@ -625,14 +679,14 @@ export default function Tasks() {
           <KeyboardHint shortcut="N" label="new task" />
           <KeyboardHint shortcut="D" label="mark done" />
           <button
-            onClick={exportCSV}
-            title="Export this week's tasks as CSV"
+            onClick={exportXLSX}
+            title="Export this week's tasks as Excel (.xlsx)"
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            CSV
+            Excel
           </button>
           <button
             onClick={exportPDF}
@@ -739,6 +793,68 @@ export default function Tasks() {
             </svg>
           </button>
         </div>
+
+        {/* ── Day of week tab bar ─────────────────────────────── */}
+        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+          <div className="flex items-center justify-center gap-1 flex-wrap">
+            {/* Permanent All pill */}
+            <button
+              onClick={() => setActiveDay(null)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all select-none',
+                activeDay === null
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+              )}
+            >
+              All
+            </button>
+            {(() => {
+              const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local time
+              return dayDates.map(({ label, dateStr, shortDate }, i) => {
+                const isToday = dateStr === todayStr;
+                const active  = activeDay === i;
+                const count   = weekTasks.filter(t => t.dueDate === dateStr).length;
+                return (
+                  <button
+                    key={i}
+                    onClick={() => setActiveDay(active ? null : i)}
+                    title={isToday ? `Today — ${shortDate}` : shortDate}
+                    className={cn(
+                      'relative flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all select-none',
+                      active
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : isToday
+                        ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700/40 hover:bg-blue-100 dark:hover:bg-blue-900/40'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>{isToday && !active ? 'Today' : label}</span>
+                      {count > 0 && (
+                        <span className={cn(
+                          'text-[10px] font-bold min-w-[16px] h-4 flex items-center justify-center rounded-full px-1 leading-none',
+                          active
+                            ? 'bg-white/25 text-white'
+                            : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600'
+                        )}>
+                          {count}
+                        </span>
+                      )}
+                    </div>
+                    {/* Today dot — always visible even when another day is active */}
+                    {isToday && (
+                      <span className={cn(
+                        'w-1 h-1 rounded-full flex-shrink-0',
+                        active ? 'bg-white/70' : 'bg-blue-500 dark:bg-blue-400'
+                      )} />
+                    )}
+                  </button>
+                );
+              });
+            })()}
+          </div>
+        </div>
       </div>
 
       {/* â”€â”€ Controls: cleared toggle + search + filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
@@ -771,6 +887,7 @@ export default function Tasks() {
         />
         <select className="input w-full sm:w-44" value={filterClient} onChange={e => setFilterClient(e.target.value)}>
           <option value="">All Clients</option>
+          <option value="__GENERAL__">General Tasks only</option>
           {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <select className="input w-full sm:w-40" value={filterType} onChange={e => setFilterType(e.target.value)}>
@@ -783,8 +900,11 @@ export default function Tasks() {
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
           <h2 className="font-semibold text-sm text-gray-800 dark:text-gray-200">
-            Tasks due this week
-            <span className="ml-2 text-xs text-gray-400 font-normal">{rangeLabel}</span>
+            {activeDay !== null ? (
+              <>{dayDates[activeDay].label}<span className="font-normal text-gray-400">, </span>{dayDates[activeDay].shortDate}</>
+            ) : (
+              <>Tasks due this week <span className="font-normal text-gray-400 text-xs ml-1">{rangeLabel}</span></>
+            )}
           </h2>
           <span className="text-xs text-gray-400 dark:text-gray-600">
             {filteredWeekTasks.length} task{filteredWeekTasks.length !== 1 ? 's' : ''}

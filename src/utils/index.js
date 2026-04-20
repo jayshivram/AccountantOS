@@ -85,7 +85,7 @@ export function countdownStatus(dateStr) {
   return 'ok';
 }
 
-export function formatDate(dateStr, fmt = 'dd MMM yyyy') {
+export function formatDate(dateStr, fmt = 'dd/MM/yyyy') {
   if (!dateStr) return '';
   const d = typeof dateStr === 'string' ? parseISO(dateStr) : dateStr;
   return format(d, fmt);
@@ -242,7 +242,7 @@ export function getUpcomingDeadlines(days = 90, refDate = new Date()) {
           period: `${py}-${String(pm).padStart(2, '0')}`,
           periodLabel: format(new Date(py, pm, 1), 'MMMM yyyy'),
           dueDate: due.toISOString(),
-          dueDateFormatted: format(due, 'dd MMM yyyy'),
+          dueDateFormatted: format(due, 'dd/MM/yyyy'),
           daysRemaining: days,
           status: days < 0 ? 'overdue' : days <= 3 ? 'critical' : days <= 7 ? 'warning' : 'ok',
         });
@@ -268,7 +268,7 @@ export function getUpcomingDeadlines(days = 90, refDate = new Date()) {
           period: `${qy}-Q${q}`,
           periodLabel: `Q${q} ${qy}`,
           dueDate: due.toISOString(),
-          dueDateFormatted: format(due, 'dd MMM yyyy'),
+          dueDateFormatted: format(due, 'dd/MM/yyyy'),
           daysRemaining: daysDiff,
           status: daysDiff < 0 ? 'overdue' : daysDiff <= 3 ? 'critical' : daysDiff <= 7 ? 'warning' : 'ok',
         });
@@ -289,7 +289,7 @@ export function getUpcomingDeadlines(days = 90, refDate = new Date()) {
         period: `${periodYear}-annual`,
         periodLabel: `Year ${periodYear}`,
         dueDate: due.toISOString(),
-        dueDateFormatted: format(due, 'dd MMM yyyy'),
+        dueDateFormatted: format(due, 'dd/MM/yyyy'),
         daysRemaining: daysDiff,
         status: daysDiff < 0 ? 'overdue' : daysDiff <= 3 ? 'critical' : daysDiff <= 7 ? 'warning' : 'ok',
       });

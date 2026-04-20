@@ -26,7 +26,7 @@ function getInitialState() {
     cancellations: [],
     workingHours:  {},
     hourFormat:    '24',
-    darkMode:      true,
+    darkMode:      false,
     notifications: false,
     currentView:   'dashboard',
     currentMonth:  new Date().getFullYear() * 100 + new Date().getMonth(),
@@ -530,7 +530,12 @@ export function useTasks() {
 /** Completion stats for a given taxType+period. */
 export function useCompletionStats(taxType, period) {
   const { state } = useApp();
-  const relevantClients = state.clients.filter(c => c.taxTypes.includes(taxType));
+  // WHT is on-demand — only clients with actual WHT records count, not all registered clients
+  const relevantClients = taxType === 'WHT'
+    ? state.clients.filter(c =>
+        state.taxReturns.some(tr => tr.clientId === c.id && tr.taxType === 'WHT' && tr.period === period)
+      )
+    : state.clients.filter(c => c.taxTypes.includes(taxType));
   const completedIds = new Set(
     state.taxReturns
       .filter(tr => tr.taxType === taxType && tr.period === period && tr.status === 'completed')

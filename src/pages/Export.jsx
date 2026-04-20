@@ -10,17 +10,71 @@ const MONTH_NAMES = [
 
 // ─── Cell renderers ───────────────────────────────────────────────────────────
 
+const CheckSVG = () => (
+  <svg className="w-4 h-4 text-green-600 dark:text-green-400 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+  </svg>
+);
+
 function CellVal({ value }) {
-  if (value === true)   return <span className="text-green-600 dark:text-green-400 font-bold text-base leading-none">✓</span>;
+  if (value === true)   return <CheckSVG />;
   if (value === 'nil')  return <span className="text-gray-400 dark:text-gray-500 text-[10px] font-bold tracking-widest">NIL</span>;
   return <span className="text-gray-300 dark:text-gray-700 select-none">–</span>;
 }
 
-function ClientCopyCell({ value }) {
-  if (value === 'sent') return <span className="text-green-600 dark:text-green-400 font-bold text-base leading-none">✓</span>;
-  if (value === 'nil')  return <span className="text-gray-400 dark:text-gray-500 text-[10px] font-bold tracking-widest">NIL</span>;
+function TypedCell({ value, doneVal }) {
+  if (value === doneVal) return <CheckSVG />;
+  if (value === 'nil')   return <span className="text-gray-400 dark:text-gray-500 text-[10px] font-bold tracking-widest">NIL</span>;
   return <span className="text-gray-300 dark:text-gray-700 select-none">–</span>;
 }
+
+// ─── Per-type column definitions ──────────────────────────────────────────────
+
+const TYPE_COLUMNS = {
+  VAT: [
+    { label: 'Excel Done',      field: 'excelDone',        doneVal: true   },
+    { label: 'Submitted',       field: 'returnSubmitted',  doneVal: true   },
+    { label: 'Payslip Status',  field: 'payslipStatus',    doneVal: 'sent' },
+    { label: 'R, A & A',        field: 'returnDownloaded', doneVal: true   },
+    { label: 'Screenshot',      field: 'screenshotTaken',  doneVal: true   },
+  ],
+  PAYE: [
+    { label: 'Submitted',       field: 'returnSubmitted',  doneVal: true   },
+    { label: 'Payslip Status',  field: 'payslipStatus',    doneVal: 'sent' },
+    { label: 'R, A & A',        field: 'returnDownloaded', doneVal: true   },
+    { label: 'Screenshot',      field: 'screenshotTaken',  doneVal: true   },
+  ],
+  SDL: [
+    { label: 'Submitted',       field: 'returnSubmitted',  doneVal: true   },
+    { label: 'Payslip Status',  field: 'payslipStatus',    doneVal: 'sent' },
+    { label: 'R, A & A',        field: 'returnDownloaded', doneVal: true   },
+    { label: 'Screenshot',      field: 'screenshotTaken',  doneVal: true   },
+  ],
+  CITY_LEVY: [
+    { label: 'Payslip Made',    field: 'payslipMade',      doneVal: true   },
+    { label: 'Sent to Client',  field: 'payslipStatus',    doneVal: 'sent' },
+    { label: 'Saved in Server', field: 'savedToServer',    doneVal: true   },
+    { label: 'Payment Status',  field: 'paymentConfirmed', doneVal: true   },
+  ],
+  NSSF: [
+    { label: 'Sent to Client',  field: 'payslipStatus',    doneVal: 'sent' },
+    { label: 'Saved to Server', field: 'savedToServer',    doneVal: true   },
+  ],
+  WCF: [
+    { label: 'Sent to Client',  field: 'payslipStatus',    doneVal: 'sent' },
+    { label: 'Saved to Server', field: 'savedToServer',    doneVal: true   },
+  ],
+  WHT: [
+    { label: 'Return Filled',   field: 'returnSubmitted',  doneVal: true   },
+  ],
+  ROI: [
+    { label: 'Return Filed',    field: 'returnSubmitted',  doneVal: true   },
+    { label: 'Screenshot',      field: 'screenshotTaken',  doneVal: true   },
+    { label: 'Payment',         field: 'paymentConfirmed', doneVal: true   },
+    { label: 'Downloaded',      field: 'returnDownloaded', doneVal: true   },
+    { label: 'Sent to Client',  field: 'payslipStatus',    doneVal: 'sent' },
+  ],
+};
 
 // ─── Main Export Page ─────────────────────────────────────────────────────────
 
@@ -72,6 +126,9 @@ export default function ExportPage() {
           paymentConfirmed: rec?.paymentConfirmed  ?? null,
           returnDownloaded: rec?.returnDownloaded  ?? null,
           payslipStatus:    rec?.payslipStatus     ?? null,
+          excelDone:        rec?.excelDone         ?? null,
+          payslipMade:      rec?.payslipMade       ?? null,
+          savedToServer:    rec?.savedToServer     ?? null,
           notes:            rec?.notes             || '',
         });
       }
@@ -94,6 +151,29 @@ export default function ExportPage() {
       return { ...r, groupIdx, isFirst };
     });
   }, [rows]);
+
+  // ── PROVISIONAL yearly pivot ──────────────────────────────────────────────
+  const provPivotRows = useMemo(() => {
+    if (filterType !== 'PROVISIONAL') return [];
+    return clients
+      .filter(c => (!(!showHidden && c.hidden)) && c.taxTypes.includes('PROVISIONAL'))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(client => {
+        const q = [1,2,3,4].map(n =>
+          state.taxReturns.find(tr => tr.clientId === client.id && tr.taxType === 'PROVISIONAL' && tr.period === `${year}-Q${n}`)
+        );
+        return {
+          clientId:    client.id,
+          clientName:  client.name,
+          returnFilled: q[0]?.returnSubmitted ?? null,
+          q1Payslip:    q[0]?.payslipStatus   ?? null,
+          q2Payslip:    q[1]?.payslipStatus   ?? null,
+          q3Payslip:    q[2]?.payslipStatus   ?? null,
+          q4Payslip:    q[3]?.payslipStatus   ?? null,
+          raaa:         q.find(r => r?.returnDownloaded)?.returnDownloaded ?? null,
+        };
+      });
+  }, [filterType, clients, state.taxReturns, year, showHidden]);
 
   // ── Summary counts ────────────────────────────────────────────────────────
   const total      = rows.length;
@@ -325,68 +405,166 @@ export default function ExportPage() {
 
       {/* Table */}
       <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[680px] text-sm">
-            <thead>
-              <tr className="bg-gray-50 dark:bg-gray-900/60 border-b border-gray-200 dark:border-gray-800">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Client</th>
-                <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Tax Type</th>
-                <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Filed</th>
-                <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Screenshot</th>
-                <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Paid</th>
-                <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Downloaded</th>
-                <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Client Copy</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayRows.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="text-center py-16">
-                    <p className="text-gray-400 dark:text-gray-600 text-sm">No filings to display for this period.</p>
-                    <p className="text-gray-400 dark:text-gray-600 text-xs mt-1">Try selecting a different month or tax type filter.</p>
-                  </td>
+        {filterType === 'PROVISIONAL' ? (
+          /* ── PROVISIONAL yearly pivot ── */
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="bg-gray-50 dark:bg-gray-900/60 border-b border-gray-200 dark:border-gray-800">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">#</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Client</th>
+                  <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Return (Q1)</th>
+                  <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Q1 Payslip</th>
+                  <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Q2 Payslip</th>
+                  <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Q3 Payslip</th>
+                  <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Q4 Payslip</th>
+                  <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">R, A &amp; A</th>
                 </tr>
-              ) : (
-                displayRows.map(r => (
-                  <tr
-                    key={`${r.clientId}-${r.taxType}`}
-                    className={cn(
-                      'border-b border-gray-100 dark:border-gray-800/60 transition-colors hover:bg-blue-50/40 dark:hover:bg-blue-900/10',
-                      r.groupIdx % 2 === 0
-                        ? 'bg-white dark:bg-transparent'
-                        : 'bg-gray-50/60 dark:bg-gray-900/20',
-                      r.isFirst && r.groupIdx > 0
-                        ? 'border-t border-t-gray-200 dark:border-t-gray-700'
-                        : ''
+              </thead>
+              <tbody>
+                {provPivotRows.length === 0 ? (
+                  <tr><td colSpan={8} className="text-center py-16 text-gray-400 text-sm">No provisional tax clients.</td></tr>
+                ) : (
+                  <>
+                    {provPivotRows.map((r, i) => (
+                      <tr key={r.clientId} className={cn('border-b border-gray-100 dark:border-gray-800/60 hover:bg-blue-50/40 dark:hover:bg-blue-900/10', i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-gray-50/60 dark:bg-gray-900/20')}>
+                        <td className="px-4 py-2.5 text-xs text-gray-400">{i + 1}</td>
+                        <td className="px-4 py-2.5 font-semibold text-gray-900 dark:text-white text-xs whitespace-nowrap">{r.clientName}</td>
+                        <td className="px-3 py-2.5 text-center"><TypedCell value={r.returnFilled} doneVal={true} /></td>
+                        <td className="px-3 py-2.5 text-center"><TypedCell value={r.q1Payslip} doneVal="sent" /></td>
+                        <td className="px-3 py-2.5 text-center"><TypedCell value={r.q2Payslip} doneVal="sent" /></td>
+                        <td className="px-3 py-2.5 text-center"><TypedCell value={r.q3Payslip} doneVal="sent" /></td>
+                        <td className="px-3 py-2.5 text-center"><TypedCell value={r.q4Payslip} doneVal="sent" /></td>
+                        <td className="px-3 py-2.5 text-center"><TypedCell value={r.raaa} doneVal={true} /></td>
+                      </tr>
+                    ))}
+                    {/* BLANKS row */}
+                    <tr className="bg-amber-50 dark:bg-amber-900/10 border-t-2 border-amber-200 dark:border-amber-700/40">
+                      <td className="px-4 py-2 text-xs font-bold text-amber-700 dark:text-amber-400" colSpan={2}>BLANKS</td>
+                      {['returnFilled','q1Payslip','q2Payslip','q3Payslip','q4Payslip','raaa'].map(f => {
+                        const doneVal = f === 'returnFilled' || f === 'raaa' ? true : 'sent';
+                        const blanks  = provPivotRows.filter(r => r[f] !== doneVal && r[f] !== 'nil').length;
+                        return <td key={f} className="px-3 py-2 text-center text-xs font-bold text-amber-700 dark:text-amber-400">{blanks || '–'}</td>;
+                      })}
+                    </tr>
+                  </>
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : filterType !== 'ALL' && filterType in TYPE_COLUMNS ? (
+          /* ── Per-type typed table ── */
+          (() => {
+            const cols = TYPE_COLUMNS[filterType];
+            return (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 dark:bg-gray-900/60 border-b border-gray-200 dark:border-gray-800">
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">#</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Client</th>
+                      {cols.map(c => (
+                        <th key={c.field} className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide whitespace-nowrap">{c.label}</th>
+                      ))}
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayRows.length === 0 ? (
+                      <tr><td colSpan={cols.length + 3} className="text-center py-16 text-gray-400 text-sm">No filings to display for this period.</td></tr>
+                    ) : (
+                      <>
+                        {displayRows.map((r, i) => (
+                          <tr key={`${r.clientId}-${r.taxType}`} className={cn('border-b border-gray-100 dark:border-gray-800/60 hover:bg-blue-50/40 dark:hover:bg-blue-900/10', i % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-gray-50/60 dark:bg-gray-900/20')}>
+                            <td className="px-4 py-2.5 text-xs text-gray-400">{i + 1}</td>
+                            <td className="px-4 py-2.5 font-semibold text-gray-900 dark:text-white text-xs whitespace-nowrap">{r.clientName}</td>
+                            {cols.map(c => (
+                              <td key={c.field} className="px-3 py-2.5 text-center">
+                                <TypedCell value={r[c.field]} doneVal={c.doneVal} />
+                              </td>
+                            ))}
+                            <td className="px-4 py-2.5"><StatusBadge status={r.status} /></td>
+                          </tr>
+                        ))}
+                        {/* BLANKS row */}
+                        <tr className="bg-amber-50 dark:bg-amber-900/10 border-t-2 border-amber-200 dark:border-amber-700/40">
+                          <td className="px-4 py-2 text-xs font-bold text-amber-700 dark:text-amber-400" colSpan={2}>BLANKS</td>
+                          {cols.map(c => {
+                            const blanks = displayRows.filter(r => r[c.field] !== c.doneVal && r[c.field] !== 'nil').length;
+                            return <td key={c.field} className="px-3 py-2 text-center text-xs font-bold text-amber-700 dark:text-amber-400">{blanks || '–'}</td>;
+                          })}
+                          <td />
+                        </tr>
+                      </>
                     )}
-                  >
-                    <td className="px-4 py-2.5 font-semibold text-gray-900 dark:text-white whitespace-nowrap text-xs">
-                      {r.clientName}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()
+        ) : (
+          /* ── Default ALL table ── */
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[680px] text-sm">
+              <thead>
+                <tr className="bg-gray-50 dark:bg-gray-900/60 border-b border-gray-200 dark:border-gray-800">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Client</th>
+                  <th className="text-left px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Tax Type</th>
+                  <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Filed</th>
+                  <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Screenshot</th>
+                  <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Paid</th>
+                  <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Downloaded</th>
+                  <th className="text-center px-3 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Client Copy</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-16">
+                      <p className="text-gray-400 dark:text-gray-600 text-sm">No filings to display for this period.</p>
+                      <p className="text-gray-400 dark:text-gray-600 text-xs mt-1">Try selecting a different month or tax type filter.</p>
                     </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      <TaxTypeBadge type={r.taxType} />
-                    </td>
-                    <td className="px-3 py-2.5 text-center"><CellVal value={r.returnSubmitted} /></td>
-                    <td className="px-3 py-2.5 text-center"><CellVal value={r.screenshotTaken} /></td>
-                    <td className="px-3 py-2.5 text-center"><CellVal value={r.paymentConfirmed} /></td>
-                    <td className="px-3 py-2.5 text-center"><CellVal value={r.returnDownloaded} /></td>
-                    <td className="px-3 py-2.5 text-center"><ClientCopyCell value={r.payslipStatus} /></td>
-                    <td className="px-4 py-2.5"><StatusBadge status={r.status} /></td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  displayRows.map(r => (
+                    <tr
+                      key={`${r.clientId}-${r.taxType}`}
+                      className={cn(
+                        'border-b border-gray-100 dark:border-gray-800/60 transition-colors hover:bg-blue-50/40 dark:hover:bg-blue-900/10',
+                        r.groupIdx % 2 === 0
+                          ? 'bg-white dark:bg-transparent'
+                          : 'bg-gray-50/60 dark:bg-gray-900/20',
+                        r.isFirst && r.groupIdx > 0
+                          ? 'border-t border-t-gray-200 dark:border-t-gray-700'
+                          : ''
+                      )}
+                    >
+                      <td className="px-4 py-2.5 font-semibold text-gray-900 dark:text-white whitespace-nowrap text-xs">
+                        {r.clientName}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <TaxTypeBadge type={r.taxType} />
+                      </td>
+                      <td className="px-3 py-2.5 text-center"><CellVal value={r.returnSubmitted} /></td>
+                      <td className="px-3 py-2.5 text-center"><CellVal value={r.screenshotTaken} /></td>
+                      <td className="px-3 py-2.5 text-center"><CellVal value={r.paymentConfirmed} /></td>
+                      <td className="px-3 py-2.5 text-center"><CellVal value={r.returnDownloaded} /></td>
+                      <td className="px-3 py-2.5 text-center"><TypedCell value={r.payslipStatus} doneVal="sent" /></td>
+                      <td className="px-4 py-2.5"><StatusBadge status={r.status} /></td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Table footer */}
-        {displayRows.length > 0 && (
+        {(filterType === 'PROVISIONAL' ? provPivotRows.length > 0 : displayRows.length > 0) && (
           <div className="px-4 py-2.5 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/20 flex items-center justify-between">
             <p className="text-xs text-gray-400 dark:text-gray-600">
-              {displayRows.length} filing{displayRows.length !== 1 ? 's' : ''}
-              {' · '}
-              {MONTH_NAMES[month]} {year}
+              {filterType === 'PROVISIONAL' ? `${provPivotRows.length} client${provPivotRows.length !== 1 ? 's' : ''} · ${year}` : `${displayRows.length} filing${displayRows.length !== 1 ? 's' : ''} · ${MONTH_NAMES[month]} ${year}`}
               {hasQuarterly && ` · Quarterly: ${quarterLabel}`}
             </p>
             <button
