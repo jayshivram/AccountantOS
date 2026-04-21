@@ -89,6 +89,30 @@ function buildSystemPrompt(state) {
       return `  ${MO[mo-1]} ${yr}: ${h.toFixed(1)}h`;
     }).join('\n');
 
+  // Filing gaps — clients with a tax type but NO record (pending or completed) for recent periods
+  const RECENT_MONTHS = 3;
+  function recentPeriods(n) {
+    const periods = [];
+    const d = new Date(today);
+    for (let i = 0; i < n; i++) {
+      periods.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+      d.setMonth(d.getMonth() - 1);
+    }
+    return periods;
+  }
+  const periodicTypes = ['VAT','PAYE','NSSF','WCF','SDL','WHT'];
+  const recentPds = recentPeriods(RECENT_MONTHS);
+  const gapLines = [];
+  for (const client of clients) {
+    for (const tt of (client.taxTypes || [])) {
+      if (!periodicTypes.includes(tt)) continue;
+      for (const period of recentPds) {
+        const hasRecord = returns.some(r => r.clientId === client.id && r.taxType === tt && r.period === period);
+        if (!hasRecord) gapLines.push(`  - ${client.name}: ${tt} ${fmtPeriod(period)} — NO RECORD`);
+      }
+    }
+  }
+
   // Notes summary
   const notes = state.notes || [];
   const noteLines = notes.slice(0, 10).map(n =>
@@ -120,6 +144,9 @@ ${monthSummary || '  (no hours logged)'}
 
 NOTES (${notes.length} total, showing first 10):
 ${noteLines || '  (none)'}
+
+FILING GAPS — clients with a tax type but ZERO record (pending or completed) for the last ${RECENT_MONTHS} months:
+${gapLines.length ? gapLines.join('\n') : '  (no gaps detected)'}
 
 Tax due dates: VAT → 20th next month, PAYE/SDL/WHT → 7th, NSSF/WCF → 30th, PROVISIONAL/CITY_LEVY → quarterly, ROI → annual June.
 
