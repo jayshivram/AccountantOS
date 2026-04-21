@@ -291,10 +291,10 @@ export default function AIAssistant() {
           model,
           messages: history,
           stream: true,
-          temperature: 0.3,
-          max_tokens: 1024,
-          // Disable thinking for Qwen3 — faster, no <think> tags in output
-          ...(model.toLowerCase().includes('qwen') ? { extra_body: { enable_thinking: false } } : {}),
+          temperature: 0.7,
+          max_tokens: 2048,
+          // Disable thinking for Qwen3 — must be top-level, not in extra_body
+          enable_thinking: false,
         }),
       });
 
