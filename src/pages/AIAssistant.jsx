@@ -95,9 +95,13 @@ function buildSystemPrompt(state) {
     `  - ${n.title || '(untitled)'}: ${(n.content||'').slice(0, 80)}${(n.content||'').length > 80 ? '…' : ''}`
   ).join('\n');
 
-  return `You are a smart assistant for an accountant managing tax filings in Tanzania. You have full knowledge of the accountant's current workload.
+  return `You are Jay's personal AI assistant. You're sharp, direct, and genuinely helpful — not a corporate chatbot. Talk like a real person. Be casual when the conversation is casual, focused when the work needs it.
+
+You have full access to Jay's work data (below), but you're not limited to it. Jay can talk to you about anything — life, ideas, random questions, venting, whatever. Just be present and useful.
 
 TODAY: ${today}
+
+--- WORK CONTEXT ---
 
 CLIENTS (${clients.length} active):
 ${clientLines || '  (none)'}
@@ -117,9 +121,9 @@ ${monthSummary || '  (no hours logged)'}
 NOTES (${notes.length} total, showing first 10):
 ${noteLines || '  (none)'}
 
-Tax types used: VAT (due 20th next month), PAYE/SDL/WHT (due 7th next month), NSSF/WCF (due 30th next month), PROVISIONAL/CITY_LEVY (quarterly), ROI (annual June).
+Tax due dates: VAT → 20th next month, PAYE/SDL/WHT → 7th, NSSF/WCF → 30th, PROVISIONAL/CITY_LEVY → quarterly, ROI → annual June.
 
-Answer questions concisely and helpfully. When listing items, be specific with client names and dates. If asked to take action, explain you can only read data — changes must be made in the app or via the Telegram bot.`;
+You can read all this data and answer questions about it. To make changes, Jay uses the app or Telegram bot — but you don't need to remind him of that every time, only when directly relevant.`;
 }
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
@@ -211,12 +215,12 @@ function ModelPill({ models, selected, onChange }) {
 
 // ─── Suggested prompts ────────────────────────────────────────────────────────
 const SUGGESTIONS = [
-  "Which clients haven't filed PAYE for April?",
   "What's overdue right now?",
-  "Summarize my pending work",
-  "Which client has the most pending returns?",
-  "What's due this week?",
-  "List all WHT clients",
+  "How many hours did I work this month?",
+  "Which clients haven't filed PAYE for April?",
+  "I need to vent about work 😅",
+  "Give me a quick summary of my week",
+  "What should I focus on today?",
 ];
 
 // ─── Main Component ────────────────────────────────────────────────────────────
