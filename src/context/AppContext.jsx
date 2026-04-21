@@ -12,6 +12,7 @@ function getInitialState() {
       ...saved,
       tallyProgress: saved.tallyProgress || [],
       cancellations: saved.cancellations  || [],
+      notes:         saved.notes          || [],
       workingHours:  saved.workingHours   || {},
       hourFormat:    saved.hourFormat     || '24',
       currentView:   'dashboard',
@@ -24,6 +25,7 @@ function getInitialState() {
     tasks:         INITIAL_TASKS,
     tallyProgress: [],
     cancellations: [],
+    notes:         [],
     workingHours:  {},
     hourFormat:    '24',
     darkMode:      false,
@@ -113,11 +115,32 @@ function reducer(state, action) {
         ),
       };
 
+    // ── Notes ──
+    case 'ADD_NOTE': {
+      const now = new Date().toISOString();
+      return {
+        ...state,
+        notes: [...(state.notes || []), { ...action.payload, id: uuid(), createdAt: now, updatedAt: now }],
+      };
+    }
+    case 'EDIT_NOTE':
+      return {
+        ...state,
+        notes: (state.notes || []).map(n => n.id === action.payload.id ? action.payload : n),
+      };
+    case 'DELETE_NOTE':
+      return { ...state, notes: (state.notes || []).filter(n => n.id !== action.payload) };
+    case 'PIN_NOTE':
+      return {
+        ...state,
+        notes: (state.notes || []).map(n => n.id === action.payload ? { ...n, pinned: !n.pinned } : n),
+      };
+
     // ── Import ──
     case 'IMPORT_DATA': {
       const { currentView, currentMonth, cancellations: _c, ...rest } = action.payload;
       // Never overwrite cancellations with a personal backup; they're managed separately.
-      return { ...state, ...rest, tallyProgress: rest.tallyProgress || [] };
+      return { ...state, ...rest, tallyProgress: rest.tallyProgress || [], notes: rest.notes || [] };
     }
 
     // ── Tally Progress ──

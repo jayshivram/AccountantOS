@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext.jsx';
 import { TAX_TYPES, TAX_TYPE_KEYS, TAX_COLORS, monthToQuarter, cn } from '../utils/index.js';
 import { TaxTypeBadge, StatusBadge } from '../components/UI.jsx';
@@ -74,6 +75,13 @@ const TYPE_COLUMNS = {
     { label: 'Downloaded',      field: 'returnDownloaded', doneVal: true   },
     { label: 'Sent to Client',  field: 'payslipStatus',    doneVal: 'sent' },
   ],
+  PROVISIONAL: [
+    { label: 'Return Filled (Q1)', field: 'returnSubmitted',  doneVal: true   },
+    { label: 'Payslip Made',       field: 'payslipMade',      doneVal: true   },
+    { label: 'Sent to Client',     field: 'payslipStatus',    doneVal: 'sent' },
+    { label: 'Payment Status',     field: 'paymentConfirmed', doneVal: true   },
+    { label: 'Revised',            field: 'revised',          doneVal: true   },
+  ],
 };
 
 // ─── Main Export Page ─────────────────────────────────────────────────────────
@@ -129,6 +137,7 @@ export default function ExportPage() {
           excelDone:        rec?.excelDone         ?? null,
           payslipMade:      rec?.payslipMade       ?? null,
           savedToServer:    rec?.savedToServer     ?? null,
+          revised:          rec?.revised           ?? null,
           notes:            rec?.notes             || '',
         });
       }
@@ -192,89 +201,143 @@ export default function ExportPage() {
     else setMonth(m => m + 1);
   }
 
-  // ── CSV export ────────────────────────────────────────────────────────────
-  function exportCSV() {
-    const fmt = v => v === true ? 'Done' : v === 'nil' ? 'NIL' : '';
-    const headers = [
-      'Client', 'Tax Type', 'Period', 'Status',
-      'Return Filed', 'Screenshot', 'Payment', 'Downloaded', 'Client Copy', 'Notes',
-    ];
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(r => [
-        `"${r.clientName}"`,
-        `"${TAX_TYPES[r.taxType] || r.taxType}"`,
-        `"${r.periodLabel}"`,
-        r.status,
-        fmt(r.returnSubmitted),
-        fmt(r.screenshotTaken),
-        fmt(r.paymentConfirmed),
-        fmt(r.returnDownloaded),
-        r.payslipStatus === 'sent' ? 'Sent' : r.payslipStatus === 'nil' ? 'NIL' : '',
-        `"${(r.notes || '').replace(/"/g, '""')}"`,
-      ].join(',')),
-    ].join('\n');
+  // ── Excel export ──────────────────────────────────────────────────────────
+  function exportXLSX() {
+    const fmtVal = (v, doneVal) => {
+      if (v === doneVal) return '✓';
+      if (v === 'nil')   return 'NIL';
+      return '';
+    };
+    const statusLabel = s => s === 'completed' ? 'Completed' : s === 'in_progress' ? 'In Progress' : 'Pending';
+    const wb = XLSX.utils.book_new();
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `submissions-${MONTH_NAMES[month].toLowerCase()}-${year}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    if (filterType === 'PROVISIONAL') {
+      const headers = ['#', 'Client', 'Return (Q1)', 'Q1 Payslip', 'Q2 Payslip', 'Q3 Payslip', 'Q4 Payslip', 'R, A & A'];
+      const data = [
+        headers,
+        ...provPivotRows.map((r, i) => [
+          i + 1, r.clientName,
+          fmtVal(r.returnFilled, true),
+          fmtVal(r.q1Payslip, 'sent'),
+          fmtVal(r.q2Payslip, 'sent'),
+          fmtVal(r.q3Payslip, 'sent'),
+          fmtVal(r.q4Payslip, 'sent'),
+          fmtVal(r.raaa, true),
+        ]),
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'Provisional Tax');
+    } else {
+      const typesToExport = filterType !== 'ALL' && filterType in TYPE_COLUMNS
+        ? [filterType]
+        : TAX_TYPE_KEYS.filter(t => rows.some(r => r.taxType === t));
+      for (const type of typesToExport) {
+        const cols = TYPE_COLUMNS[type];
+        if (!cols) continue;
+        const typeRows = rows.filter(r => r.taxType === type);
+        const headers  = ['#', 'Client', 'Period', ...cols.map(c => c.label), 'Status', 'Notes'];
+        const data = [
+          headers,
+          ...typeRows.map((r, i) => [
+            i + 1, r.clientName, r.periodLabel,
+            ...cols.map(c => fmtVal(r[c.field], c.doneVal)),
+            statusLabel(r.status),
+            r.notes || '',
+          ]),
+        ];
+        const sheetName = (TAX_TYPES[type] || type).substring(0, 31);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), sheetName);
+      }
+    }
+
+    if (wb.SheetNames.length === 0) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['No data']]), 'Summary');
+    }
+    const fileName = filterType !== 'ALL'
+      ? `${(TAX_TYPES[filterType] || filterType).toLowerCase().replace(/[\s/]+/g, '-')}-${MONTH_NAMES[month].toLowerCase()}-${year}.xlsx`
+      : `submissions-${MONTH_NAMES[month].toLowerCase()}-${year}.xlsx`;
+    XLSX.writeFile(wb, fileName);
   }
 
   // ── Print (plain table PDF) ───────────────────────────────────────────────
   function exportPDF() {
-    const colDefs = [
-      { label: 'Client',       width: '18%' },
-      { label: 'Tax Type',     width: '10%' },
-      { label: 'Period',       width: '10%' },
-      { label: 'Status',       width: '9%'  },
-      { label: 'Return Filed', width: '8%'  },
-      { label: 'Screenshot',   width: '8%'  },
-      { label: 'Payment',      width: '8%'  },
-      { label: 'Downloaded',   width: '8%'  },
-      { label: 'Client Copy',  width: '8%'  },
-      { label: 'Notes',        width: '13%' },
-    ];
-    const boolVal  = v => v === true ? '✓' : v === 'nil' ? 'NIL' : '–';
-    const clientCopyVal = v => v === 'sent' ? '✓' : v === 'nil' ? 'NIL' : '–';
-
-    const headerRow = colDefs.map(c =>
-      `<th style="width:${c.width};padding:7px 8px;background:#f3f4f6;border:1px solid #d1d5db;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;font-weight:600;">${c.label}</th>`
-    ).join('');
-
+    const boolVal = v => v === true ? '✓' : v === 'nil' ? 'NIL' : '–';
+    const sentVal = v => v === 'sent' ? '✓' : v === 'nil' ? 'NIL' : '–';
+    const cellVal = (v, doneVal) => doneVal === 'sent' ? sentVal(v) : boolVal(v);
+    const cellClr = (v, doneVal) => v === doneVal ? '#059669' : '#9ca3af';
+    const th = (w, lbl) => `<th style="width:${w};padding:7px 8px;background:#f3f4f6;border:1px solid #d1d5db;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;font-weight:600;">${lbl}</th>`;
+    const td = (bg, extra, val) => `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};${extra}">${val}</td>`;
     const statusColors = { completed: '#059669', in_progress: '#2563eb', pending: '#9ca3af' };
     const statusLabels = { completed: 'Completed', in_progress: 'In Progress', pending: 'Pending' };
 
-    const bodyRows = displayRows.map((r, ri) => {
-      const bg = ri % 2 === 0 ? '#ffffff' : '#f9fafb';
-      const statusColor = statusColors[r.status] || '#9ca3af';
-      const cells = [
-        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};font-weight:${r.isFirst ? '600' : '400'};color:#111827;">${r.clientName}</td>`,
-        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};color:#374151;">${TAX_TYPES[r.taxType] || r.taxType}</td>`,
-        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};color:#374151;">${r.periodLabel}</td>`,
-        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};color:${statusColor};font-weight:600;">${statusLabels[r.status] || r.status}</td>`,
-        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};text-align:center;color:${r.returnSubmitted === true ? '#059669' : '#9ca3af'};">${boolVal(r.returnSubmitted)}</td>`,
-        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};text-align:center;color:${r.screenshotTaken === true ? '#059669' : '#9ca3af'};">${boolVal(r.screenshotTaken)}</td>`,
-        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};text-align:center;color:${r.paymentConfirmed === true ? '#059669' : '#9ca3af'};">${boolVal(r.paymentConfirmed)}</td>`,
-        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};text-align:center;color:${r.returnDownloaded === true ? '#059669' : '#9ca3af'};">${boolVal(r.returnDownloaded)}</td>`,
-        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};text-align:center;color:${r.payslipStatus === 'sent' ? '#059669' : '#9ca3af'};">${clientCopyVal(r.payslipStatus)}</td>`,
-        `<td style="padding:6px 8px;border:1px solid #e5e7eb;font-size:11px;background:${bg};color:#6b7280;">${r.notes || ''}</td>`,
-      ];
-      return `<tr>${cells.join('')}</tr>`;
-    }).join('') || `<tr><td colspan="10" style="padding:16px;text-align:center;color:#9ca3af;font-size:11px;border:1px solid #e5e7eb;">No data</td></tr>`;
+    let tableHTML = '';
+    let title    = `Submission Report – ${MONTH_NAMES[month]} ${year}`;
+    let subtitle = `${total} filing${total !== 1 ? 's' : ''} · ${completed} completed · ${inProgress} in progress · ${pending} pending`;
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Submission Report – ${MONTH_NAMES[month]} ${year}</title>
-<style>body{font-family:Arial,sans-serif;margin:20px;color:#111827;}h2{margin:0 0 4px;font-size:15px;}p{margin:0 0 12px;font-size:11px;color:#6b7280;}table{border-collapse:collapse;width:100%;}@media print{body{margin:10px;}}</style>
-</head><body>
-<h2>Submission Report &mdash; ${MONTH_NAMES[month]} ${year}${hasQuarterly ? ` &middot; ${quarterLabel}` : ''}</h2>
-<p>${total} filing${total !== 1 ? 's' : ''} &middot; ${completed} completed &middot; ${inProgress} in progress &middot; ${pending} pending</p>
-<table><thead><tr>${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table>
-</body></html>`;
+    if (filterType === 'PROVISIONAL') {
+      title    = `Provisional Tax Report – ${year}`;
+      subtitle = `${provPivotRows.length} client${provPivotRows.length !== 1 ? 's' : ''} · ${year}`;
+      const pvCols = [
+        { label: 'Return (Q1)', field: 'returnFilled', doneVal: true   },
+        { label: 'Q1 Payslip',  field: 'q1Payslip',   doneVal: 'sent' },
+        { label: 'Q2 Payslip',  field: 'q2Payslip',   doneVal: 'sent' },
+        { label: 'Q3 Payslip',  field: 'q3Payslip',   doneVal: 'sent' },
+        { label: 'Q4 Payslip',  field: 'q4Payslip',   doneVal: 'sent' },
+        { label: 'R, A & A',    field: 'raaa',         doneVal: true   },
+      ];
+      const colW = `${Math.floor(65 / pvCols.length)}%`;
+      const hRow = [th('5%', '#'), th('30%', 'Client'), ...pvCols.map(c => th(colW, c.label))].join('');
+      const bRows = provPivotRows.map((r, ri) => {
+        const bg = ri % 2 === 0 ? '#ffffff' : '#f9fafb';
+        return `<tr>${td(bg, 'color:#9ca3af;', ri + 1)}${td(bg, 'font-weight:600;color:#111827;', r.clientName)}${pvCols.map(c => td(bg, `text-align:center;color:${cellClr(r[c.field], c.doneVal)};`, cellVal(r[c.field], c.doneVal))).join('')}</tr>`;
+      }).join('') || `<tr><td colspan="${pvCols.length + 2}" style="padding:16px;text-align:center;color:#9ca3af;font-size:11px;border:1px solid #e5e7eb;">No data</td></tr>`;
+      tableHTML = `<table><thead><tr>${hRow}</tr></thead><tbody>${bRows}</tbody></table>`;
+
+    } else if (filterType !== 'ALL' && filterType in TYPE_COLUMNS) {
+      const cols = TYPE_COLUMNS[filterType];
+      title      = `${TAX_TYPES[filterType] || filterType} Report – ${MONTH_NAMES[month]} ${year}${hasQuarterly ? ` · ${quarterLabel}` : ''}`;
+      const colW = `${Math.floor(55 / cols.length)}%`;
+      const hRow = [th('5%', '#'), th('22%', 'Client'), th('10%', 'Period'), ...cols.map(c => th(colW, c.label)), th('10%', 'Status')].join('');
+      const bRows = displayRows.map((r, ri) => {
+        const bg = ri % 2 === 0 ? '#ffffff' : '#f9fafb';
+        const sc = statusColors[r.status] || '#9ca3af';
+        return `<tr>${td(bg, 'color:#9ca3af;', ri + 1)}${td(bg, `font-weight:${r.isFirst ? '600' : '400'};color:#111827;`, r.clientName)}${td(bg, 'color:#374151;', r.periodLabel)}${cols.map(c => td(bg, `text-align:center;color:${cellClr(r[c.field], c.doneVal)};`, cellVal(r[c.field], c.doneVal))).join('')}${td(bg, `color:${sc};font-weight:600;`, statusLabels[r.status] || r.status)}</tr>`;
+      }).join('') || `<tr><td colspan="${cols.length + 4}" style="padding:16px;text-align:center;color:#9ca3af;font-size:11px;border:1px solid #e5e7eb;">No data</td></tr>`;
+      tableHTML = `<table><thead><tr>${hRow}</tr></thead><tbody>${bRows}</tbody></table>`;
+
+    } else {
+      const colDefs = [
+        { label: 'Client',       width: '18%' },
+        { label: 'Tax Type',     width: '10%' },
+        { label: 'Period',       width: '10%' },
+        { label: 'Status',       width: '9%'  },
+        { label: 'Return Filed', width: '8%'  },
+        { label: 'Screenshot',   width: '8%'  },
+        { label: 'Payment',      width: '8%'  },
+        { label: 'Downloaded',   width: '8%'  },
+        { label: 'Client Copy',  width: '8%'  },
+        { label: 'Notes',        width: '13%' },
+      ];
+      const hRow  = colDefs.map(c => th(c.width, c.label)).join('');
+      const bRows = displayRows.map((r, ri) => {
+        const bg = ri % 2 === 0 ? '#ffffff' : '#f9fafb';
+        const sc = statusColors[r.status] || '#9ca3af';
+        return `<tr>${[
+          td(bg, `font-weight:${r.isFirst ? '600' : '400'};color:#111827;`,        r.clientName),
+          td(bg, 'color:#374151;',                                                  TAX_TYPES[r.taxType] || r.taxType),
+          td(bg, 'color:#374151;',                                                  r.periodLabel),
+          td(bg, `color:${sc};font-weight:600;`,                                    statusLabels[r.status] || r.status),
+          td(bg, `text-align:center;color:${cellClr(r.returnSubmitted, true)};`,    boolVal(r.returnSubmitted)),
+          td(bg, `text-align:center;color:${cellClr(r.screenshotTaken, true)};`,    boolVal(r.screenshotTaken)),
+          td(bg, `text-align:center;color:${cellClr(r.paymentConfirmed, true)};`,   boolVal(r.paymentConfirmed)),
+          td(bg, `text-align:center;color:${cellClr(r.returnDownloaded, true)};`,   boolVal(r.returnDownloaded)),
+          td(bg, `text-align:center;color:${cellClr(r.payslipStatus, 'sent')};`,    sentVal(r.payslipStatus)),
+          td(bg, 'color:#6b7280;',                                                   r.notes || ''),
+        ].join('')}</tr>`;
+      }).join('') || `<tr><td colspan="10" style="padding:16px;text-align:center;color:#9ca3af;font-size:11px;border:1px solid #e5e7eb;">No data</td></tr>`;
+      tableHTML = `<table><thead><tr>${hRow}</tr></thead><tbody>${bRows}</tbody></table>`;
+    }
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:Arial,sans-serif;margin:20px;color:#111827;}h2{margin:0 0 4px;font-size:15px;}p{margin:0 0 12px;font-size:11px;color:#6b7280;}table{border-collapse:collapse;width:100%;}@media print{body{margin:10px;}}</style></head><body><h2>${title}</h2><p>${subtitle}</p>${tableHTML}</body></html>`;
 
     const w = window.open('', '_blank', 'width=1100,height=700');
     if (!w) return;
@@ -299,13 +362,13 @@ export default function ExportPage() {
         </div>
         <div className="flex gap-2 flex-shrink-0">
           <button
-            onClick={exportCSV}
+            onClick={exportXLSX}
             className="btn btn-primary flex items-center gap-2 text-sm"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            Export CSV
+            Export Excel
           </button>
           <button
             onClick={exportPDF}
@@ -568,10 +631,10 @@ export default function ExportPage() {
               {hasQuarterly && ` · Quarterly: ${quarterLabel}`}
             </p>
             <button
-              onClick={exportCSV}
+              onClick={exportXLSX}
               className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium"
             >
-              Download CSV
+              Download Excel
             </button>
           </div>
         )}

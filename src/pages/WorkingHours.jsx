@@ -1,4 +1,5 @@
 ﻿import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext.jsx';
 import { cn } from '../utils/index.js';
 
@@ -473,18 +474,17 @@ export default function WorkingHours() {
   const netMinsPerDay = DAYS.map(day => calcNetMins(weekData[day]));
   const totalMins     = netMinsPerDay.reduce((s, m) => s + (m || 0), 0);
 
-  function exportCSV() {
+  function exportXLSX() {
     const header = ['Day', 'Date', 'Time In', 'Break Start', 'Break Stop', 'Time Out', 'Net Hours'];
-    const rows   = DAYS.map((day, i) => {
+    const dataRows = DAYS.map((day, i) => {
       const e = weekData[day] || {};
       return [day, fmtDate(weekDates[i]), e.timeIn || '', e.breakStart || '', e.breakStop || '', e.timeOut || '', fmtMins(netMinsPerDay[i])];
     });
-    rows.push(['', 'TOTAL', '', '', '', '', fmtMins(totalMins)]);
-    const csv  = [header, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
-    const url  = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-    const a    = Object.assign(document.createElement('a'), { href: url, download: `working-hours-${weekKey}.csv` });
-    a.click();
-    URL.revokeObjectURL(url);
+    dataRows.push(['', 'TOTAL', '', '', '', '', fmtMins(totalMins)]);
+    const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Working Hours');
+    XLSX.writeFile(wb, `working-hours-${weekKey}.xlsx`);
   }
 
   function exportPDF() {
@@ -536,7 +536,7 @@ export default function WorkingHours() {
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <button
-            onClick={exportCSV}
+            onClick={exportXLSX}
             className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700
               text-white font-semibold text-sm rounded-xl shadow-md shadow-emerald-600/20
               focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-gray-950
@@ -546,7 +546,7 @@ export default function WorkingHours() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            Export CSV
+            Export Excel
           </button>
           <button
             onClick={exportPDF}

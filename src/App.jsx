@@ -10,6 +10,7 @@ import FocusMode      from './pages/FocusMode.jsx';
 import ExportPage     from './pages/Export.jsx';
 import Cancellations  from './pages/Cancellations.jsx';
 import WorkingHours   from './pages/WorkingHours.jsx';
+import Notes          from './pages/Notes.jsx';
 import Login          from './components/Login.jsx';
 import {
   exportData, importData, requestNotificationPermission, cn, getLastSyncTs, clearState
@@ -90,6 +91,11 @@ const Icons = {
   Close: () => (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  ),
+  Notes: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
     </svg>
   ),
 };
@@ -338,6 +344,7 @@ function Sidebar({ currentView, onNavigate, onSettings, mobileOpen, onMobileClos
     { key: 'tasks',         label: 'Tasks',           Icon: Icons.Tasks         },
     { key: 'tally',         label: 'Tally Tracker',   Icon: Icons.Tally         },
     { key: 'cancellations', label: 'Cancellations',   Icon: Icons.Cancellations },    { key: 'workinghours',  label: 'Working Hours',    Icon: Icons.WorkingHours  },    { key: 'history',       label: 'History',         Icon: Icons.History       },
+    { key: 'notes',         label: 'Notes',           Icon: Icons.Notes         },
     { key: 'export',        label: 'Export',          Icon: Icons.Export        },
   ];
 
@@ -467,6 +474,7 @@ function AppShell({ onLogout, userEmail }) {
     export:        'Export',
     cancellations: 'Cancellations',
     workinghours:  'Working Hours',
+    notes:         'Notes',
   };
 
   // Render current page
@@ -482,6 +490,7 @@ function AppShell({ onLogout, userEmail }) {
       case 'export':        return <ExportPage />;
       case 'cancellations': return <Cancellations />;
       case 'workinghours':   return <WorkingHours />;
+      case 'notes':          return <Notes />;
       default:               return <Dashboard onNavigate={navigate} />;
     }
   }
