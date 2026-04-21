@@ -51,6 +51,50 @@ function buildSystemPrompt(state) {
     `  - [${t.priority}] ${t.title}${t.dueDate ? ` (due ${t.dueDate})` : ''}`
   ).join('\n');
 
+  // Working hours — summarise all weeks and compute monthly totals
+  const wh = state.workingHours || {};
+  const DAY_ORDER = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  function calcDay(d) {
+    if (!d?.timeIn || !d?.timeOut) return 0;
+    const toMins = t => { const [h,m] = t.split(':').map(Number); return h*60+m; };
+    const worked = toMins(d.timeOut) - toMins(d.timeIn);
+    const brk = (d.breakStart && d.breakStop) ? toMins(d.breakStop) - toMins(d.breakStart) : 0;
+    return Math.max(0, (worked - Math.max(0, brk)) / 60);
+  }
+  // Group weeks by year-month
+  const monthlyHours = {};
+  const weekLines = [];
+  for (const [wk, days] of Object.entries(wh).sort()) {
+    let wkTotal = 0, wkDays = 0;
+    const dayParts = [];
+    for (const day of DAY_ORDER) {
+      const e = days[day]; if (!e?.timeIn) continue;
+      const h = calcDay(e); wkTotal += h; wkDays++;
+      dayParts.push(`${day} ${h.toFixed(1)}h`);
+    }
+    if (wkDays === 0) continue;
+    weekLines.push(`  ${wk}: ${wkTotal.toFixed(1)}h (${dayParts.join(', ')})`);
+    // Parse week key to get approximate month
+    const [yr, wNum] = wk.split('-W').map(Number);
+    // simple week→month: use Jan 4 + (week-1)*7 days
+    const jan4 = new Date(yr, 0, 4);
+    const monday = new Date(jan4.getTime() + (wNum - 1) * 7 * 86400000);
+    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+    const ym = `${monday.getFullYear()}-${String(monday.getMonth()+1).padStart(2,'0')}`;
+    monthlyHours[ym] = (monthlyHours[ym] || 0) + wkTotal;
+  }
+  const monthSummary = Object.entries(monthlyHours).sort()
+    .map(([ym, h]) => {
+      const [yr, mo] = ym.split('-').map(Number);
+      return `  ${MO[mo-1]} ${yr}: ${h.toFixed(1)}h`;
+    }).join('\n');
+
+  // Notes summary
+  const notes = state.notes || [];
+  const noteLines = notes.slice(0, 10).map(n =>
+    `  - ${n.title || '(untitled)'}: ${(n.content||'').slice(0, 80)}${(n.content||'').length > 80 ? '…' : ''}`
+  ).join('\n');
+
   return `You are a smart assistant for an accountant managing tax filings in Tanzania. You have full knowledge of the accountant's current workload.
 
 TODAY: ${today}
@@ -63,6 +107,15 @@ ${pendingLines || '  (all clear!)'}
 
 PENDING TASKS (${tasks.length}):
 ${taskLines || '  (none)'}
+
+WORKING HOURS BY WEEK:
+${weekLines.join('\n') || '  (no hours logged)'}
+
+WORKING HOURS BY MONTH:
+${monthSummary || '  (no hours logged)'}
+
+NOTES (${notes.length} total, showing first 10):
+${noteLines || '  (none)'}
 
 Tax types used: VAT (due 20th next month), PAYE/SDL/WHT (due 7th next month), NSSF/WCF (due 30th next month), PROVISIONAL/CITY_LEVY (quarterly), ROI (annual June).
 
