@@ -173,6 +173,10 @@ function detectIntent(raw: string): string {
   // Tally step updates
   if (/\b(mark|update|tick|set|complete|done)\s+(tally|year.?end|bank\s+rec|bank\s+reconcil|financial|accounts?\s+final|adjustments?)\b/.test(t)) return 'update_tally';
   if (/\b(bank\s+reconcil|financials?\s+(prep|done|complete|prepar)|accounts?\s+(final|done|complet)|tally\s+(update|updat|done|upd)|adjustments?\s+(pass|done))\b/.test(t)) return 'update_tally';
+  // Morning brief mute/unmute
+  if (/\b(mute|pause|stop|disable|silence|turn off|no more).{0,30}(notif|brief|morning|daily|reminder|alert)\b/.test(t)) return 'mute_brief';
+  if (/\b(unmute|resume|start|enable|turn on|re-?enable).{0,30}(notif|brief|morning|daily|reminder|alert)\b/.test(t)) return 'unmute_brief';
+  if (/^(mute|unmute|pause notifications?|stop notifications?|start notifications?|resume notifications?)$/.test(t)) return t.startsWith('unmute') || t.startsWith('start') || t.startsWith('resume') ? 'unmute_brief' : 'mute_brief';
   return 'unknown';
 }
 
@@ -406,7 +410,11 @@ Deno.serve(async (req) => {
         '`stats` — Completion percentages + counts',
         '`recent` — Filed + completed this week',
         '`tally` — Year-end progress per client with next step',
-        '`export excel` — How to export data from the app',
+        '`export excel` — How to export data from the app', '',
+        '━━━━━━━━━━━━━━━',
+        '🔔 *NOTIFICATIONS*',
+        '`mute` — Pause the daily morning brief',
+        '`unmute` — Resume the daily morning brief',
       ].join('\n'));
       return new Response('OK');
     }
@@ -1263,6 +1271,18 @@ Deno.serve(async (req) => {
         ...TALLY_STEPS.map(([k,l]) => `  ${utUpdated[k] ? '\u2705' : '\u2b1c'} ${l}`),
       ];
       await send(utLines.join('\n'));
+      return new Response('OK');
+    }
+
+    // ── MUTE / UNMUTE MORNING BRIEF ───────────────────────────────────────
+    if (it === 'mute_brief') {
+      await save(supa, { ...state, botMuted: true });
+      await send('🔕 *Morning brief paused.*\n\nYou won\'t get the daily notification until you turn it back on.\n\n_Send `unmute` or `start notifications` to resume._');
+      return new Response('OK');
+    }
+    if (it === 'unmute_brief') {
+      await save(supa, { ...state, botMuted: false });
+      await send('🔔 *Morning brief resumed.*\n\nYou\'ll get your daily notification again tomorrow morning.\n\n_Send `mute` or `stop notifications` to pause._');
       return new Response('OK');
     }
 

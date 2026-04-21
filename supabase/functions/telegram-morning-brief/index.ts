@@ -26,16 +26,14 @@ interface Task {
 export function dueDate(taxType: string, period: string): string | null {
   if (!period.match(/^\d{4}-\d{2}$/)) return null; // skip non-monthly (annual, quarterly)
   const [yr, mo] = period.split('-').map(Number);
-  const nextMonth = mo === 12 ? 1 : mo + 1;
-  const nextYear  = mo === 12 ? yr + 1 : yr;
+  // App stores months 0-based (Jan=0). Use JS Date to advance to next month.
+  const next = new Date(yr, mo + 1, 1);
   const pad = (n: number) => String(n).padStart(2, '0');
-
   const t = taxType.toUpperCase();
-  let day = 7; // default: PAYE, SDL, WHT, CITY_LEVY
-  if (t === 'VAT')                          day = 20; // Tanzania VAT due 20th
+  let day = 7;
+  if (t === 'VAT')                          day = 20;
   else if (t === 'NSSF' || t === 'WCF')    day = 30;
-
-  return `${nextYear}-${pad(nextMonth)}-${pad(day)}`;
+  return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(day)}`;
 }
 
 export function daysDiff(dateStr: string): number {
@@ -64,6 +62,12 @@ Deno.serve(async (_req) => {
     }
 
     const state      = data.data as Record<string, unknown>;
+
+    // Respect mute flag — skip silently if user paused notifications
+    if (state.botMuted === true) {
+      return new Response(JSON.stringify({ ok: true, skipped: 'muted' }), { status: 200 });
+    }
+
     const taxReturns = ((state.taxReturns as TaxReturn[]) || []);
     const tasks      = ((state.tasks      as Task[])      || []);
     const clients    = ((state.clients    as Client[])    || []);
@@ -75,7 +79,8 @@ Deno.serve(async (_req) => {
     const MO_S = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     function fmtPd(period: string): string {
       const [yr, mo] = period.split('-').map(Number);
-      return (!yr || !mo || mo < 1 || mo > 12) ? period : `${MO_S[mo-1]} ${yr}`;
+      // App stores months 0-based (Jan=0, Dec=11)
+      return (!yr || mo === undefined || mo < 0 || mo > 11) ? period : `${MO_S[mo]} ${yr}`;
     }
     function fmtDt(iso: string): string {
       const [, mo, dy] = iso.split('-').map(Number);
