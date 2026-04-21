@@ -654,8 +654,12 @@ function TelegramSection() {
   async function sendTest() {
     setTesting(true); setTestMsg(null);
     try {
-      const { error } = await supabase.functions.invoke('telegram-morning-brief');
-      setTestMsg(error ? 'error' : 'ok');
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-morning-brief`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_KEY}` },
+      });
+      setTestMsg(res.ok ? 'ok' : 'error');
     } catch { setTestMsg('error'); }
     finally { setTesting(false); }
     setTimeout(() => setTestMsg(null), 4000);
