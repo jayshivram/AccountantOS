@@ -165,6 +165,13 @@ function detectIntent(raw: string): string {
   if (/^(clear|reset)\s+hours?\s*/i.test(raw)) return 'clear_hours';
   // Export
   if (/\b(export|download|generate)\s*(excel|xlsx|pdf|report|csv)?\b/.test(t)) return 'export';
+  // Filing gap / status detection
+  if (/\b(who.*(hasn.?t|haven.?t|not\s+filed|missing|didn.?t|still\s+pending|remaining)|which.*(client|company).*(haven.?t|hasn.?t|not\s+filed|missing|still|pending)|(remaining|missing|unfiled|not.?filed)\s+.*(return|vat|paye|sdl|nssf|wcf|wht))\b/.test(t)) return 'who_missing';
+  if (/\b(vat|paye|sdl|nssf|wcf|wht|heslb)\b.{0,40}\b(remaining|missing|unfiled|pending|status|who|which|filed|client)\b/.test(t)) return 'who_missing';
+  if (/\b(status|progress|overview|report)\s+(of\s+|for\s+)?(vat|paye|sdl|nssf|wcf|wht)\b/.test(t)) return 'who_missing';
+  // Tally step updates
+  if (/\b(mark|update|tick|set|complete|done)\s+(tally|year.?end|bank\s+rec|bank\s+reconcil|financial|accounts?\s+final|adjustments?)\b/.test(t)) return 'update_tally';
+  if (/\b(bank\s+reconcil|financials?\s+(prep|done|complete|prepar)|accounts?\s+(final|done|complet)|tally\s+(update|updat|done|upd)|adjustments?\s+(pass|done))\b/.test(t)) return 'update_tally';
   return 'unknown';
 }
 
@@ -618,13 +625,46 @@ Deno.serve(async (req) => {
 
     // ── TASK CREATE ───────────────────────────────────────────────────────
     if (it === 'task_create') {
-      const text  = rawText.replace(/^(add\s+|new\s+|create\s+)?task\s+/i, '').trim();
-      const title = text.split('\n')[0].slice(0, 80);
-      if (!title) { await send('Usage: `task What needs to be done`'); return new Response('OK'); }
-      const due = new Date(); due.setDate(due.getDate() + 3);
-      const t: Task = { id: uid(), title, status: 'pending', priority: 'high', dueDate: due.toISOString().slice(0, 10), description: '', category: 'Telegram', createdAt: now() };
-      await save(supa, { ...state, tasks: [...tasks, t] });
-      await send(`✅ *Task created!*\n"${title}"\n_Priority: High · Due: ${t.dueDate}_\n\nComplete it later: \`done task ${title.split(' ').slice(0, 3).join(' ')}\``);
+      let tcText = rawText.replace(/^(add\s+|new\s+|create\s+)?task\s+/i, '').trim();
+      // Parse priority from text
+      let tcPriority: Task['priority'] = 'medium';
+      if (/\b(urgent|asap|critical|immediately|high\s*priority|high-priority)\b/i.test(tcText)) tcPriority = 'high';
+      else if (/\b(low\s*priority|low-priority|whenever|minor|not\s+urgent)\b/i.test(tcText)) tcPriority = 'low';
+      tcText = tcText.replace(/\b(urgent|asap|critical|immediately|high\s*priority|high-priority|low\s*priority|low-priority|whenever|minor|not\s+urgent)\b/gi, '').trim();
+      // Parse due date from text
+      const tcBase = new Date(); tcBase.setHours(0,0,0,0);
+      let tcDue = new Date(tcBase); tcDue.setDate(tcDue.getDate() + 3);
+      const tcLow = tcText.toLowerCase();
+      const tcIso = tcText.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+      const tcIn  = tcLow.match(/\bin\s+(\d+)\s+days?\b/);
+      const TC_DAYS: Record<string,number> = { monday:1,tuesday:2,wednesday:3,thursday:4,friday:5,saturday:6,sunday:0,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6,sun:0 };
+      if (tcIso) {
+        tcDue = new Date(tcIso[1] + 'T00:00:00'); tcText = tcText.replace(tcIso[0], '').trim();
+      } else if (tcIn) {
+        tcDue = new Date(tcBase); tcDue.setDate(tcDue.getDate() + parseInt(tcIn[1])); tcText = tcText.replace(tcIn[0], '').trim();
+      } else if (/\btoday\b/i.test(tcLow)) {
+        tcDue = new Date(tcBase); tcText = tcText.replace(/\btoday\b/gi, '').trim();
+      } else if (/\btomorrow\b/i.test(tcLow)) {
+        tcDue = new Date(tcBase); tcDue.setDate(tcDue.getDate() + 1); tcText = tcText.replace(/\btomorrow\b/gi, '').trim();
+      } else if (/\bnext\s+week\b/i.test(tcLow)) {
+        tcDue = new Date(tcBase); tcDue.setDate(tcDue.getDate() + 7); tcText = tcText.replace(/\bnext\s+week\b/gi, '').trim();
+      } else if (/\bend\s+of\s+(the\s+)?week\b/i.test(tcLow)) {
+        tcDue = new Date(tcBase); const dFri = (5 - tcBase.getDay() + 7) % 7 || 7; tcDue.setDate(tcDue.getDate() + dFri); tcText = tcText.replace(/\bend\s+of\s+(the\s+)?week\b/gi, '').trim();
+      } else {
+        const tcDayM = tcLow.match(/\b(?:(?:next|this)\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b/);
+        if (tcDayM) {
+          const td = TC_DAYS[tcDayM[1]]; if (td !== undefined) { const diff = (td - tcBase.getDay() + 7) % 7 || 7; tcDue = new Date(tcBase); tcDue.setDate(tcDue.getDate() + diff); }
+          tcText = tcText.replace(new RegExp('(?:(?:next|this)\\s+)?' + tcDayM[1], 'gi'), '').trim();
+        }
+      }
+      tcText = tcText.replace(/\bby\s*$/i, '').replace(/\s{2,}/g, ' ').trim();
+      const title = tcText.split('\n')[0].slice(0, 80).trim();
+      if (!title) { await send('Usage: `task What needs to be done`\n\nExamples:\n`task Call TRA tomorrow urgent`\n`task Submit VAT by Friday`\n`task Review accounts in 5 days`'); return new Response('OK'); }
+      const tcDueDateStr = tcDue.toISOString().slice(0, 10);
+      const priEmoji = tcPriority === 'high' ? '🔴' : tcPriority === 'medium' ? '🟡' : '⚪';
+      const newTask: Task = { id: uid(), title, status: 'pending', priority: tcPriority, dueDate: tcDueDateStr, description: '', category: 'Telegram', createdAt: now() };
+      await save(supa, { ...state, tasks: [...tasks, newTask] });
+      await send(`✅ *Task created!*\n"${title}"\n_${priEmoji} ${tcPriority[0].toUpperCase() + tcPriority.slice(1)} priority · Due: ${tcDueDateStr}_\n\nComplete: \`done task ${title.split(' ').slice(0, 3).join(' ')}\``);
       return new Response('OK');
     }
 
@@ -1153,6 +1193,78 @@ Deno.serve(async (req) => {
 
     // ── UNKNOWN — smart fallbacks ──────────────────────────────────────────
 
+    // ── WHO MISSING / FILING STATUS ──────────────────────────────────────────
+    if (it === 'who_missing') {
+      const wmTxM = rawText.match(/\b(VAT|PAYE|SDL|NSSF|WCF|WHT|HESLB|PROVISIONAL|ROI|CITY)\b/i);
+      const wmType = wmTxM ? wmTxM[1].toUpperCase() : null;
+      const MN_SHORT_WM = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+      let wmPeriod = '';
+      const wmPM  = rawText.match(/(\d{4}-\d{2})/);
+      const wmMM  = rawText.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s*(\d{4})?/i);
+      if (wmPM) { wmPeriod = wmPM[1]; }
+      else if (wmMM) { const mi = MN_SHORT_WM.indexOf(wmMM[1].slice(0,3).toLowerCase()); const yr = wmMM[2] ? parseInt(wmMM[2]) : new Date().getFullYear(); wmPeriod = `${yr}-${String(mi+1).padStart(2,'0')}`; }
+      else { const d = new Date(); d.setMonth(d.getMonth()-1); wmPeriod = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+      if (!wmType) {
+        await send(`📋 Include a tax type to check filing status.\n\nExamples:\n\`who hasn't filed NSSF March?\`\n\`PAYE April status\`\n\`WCF March missing clients\``);
+        return new Response('OK');
+      }
+      const wmClients = clients.filter(c => !c.hidden && (c.taxTypes||[]).includes(wmType));
+      if (!wmClients.length) { await send(`No active clients track ${wmType}.`); return new Response('OK'); }
+      const wmFiled   = wmClients.filter(c => returns.some(r => r.clientId===c.id && r.taxType===wmType && r.period===wmPeriod && r.status==='completed'));
+      const wmPending = wmClients.filter(c => returns.some(r => r.clientId===c.id && r.taxType===wmType && r.period===wmPeriod && r.status!=='completed'));
+      const wmMissing = wmClients.filter(c => !returns.some(r => r.clientId===c.id && r.taxType===wmType && r.period===wmPeriod));
+      const wmDd = taxDueDate(wmType, wmPeriod);
+      const wmDdStr = wmDd ? ` \u00b7 due ${fmtDate(wmDd)} (${fmtDiff(daysDiff(wmDd))})` : '';
+      const wmLines: string[] = [`\ud83d\udccb *${wmType} ${fmtPeriod(wmPeriod)} \u2014 Status${wmDdStr}*`, `_${wmClients.length} client${wmClients.length!==1?'s':''} track ${wmType}_`, ''];
+      if (wmMissing.length) { wmLines.push(`\u274c *No record yet (${wmMissing.length}):*`); wmMissing.forEach(c => wmLines.push(`  \u2022 ${c.name}`)); wmLines.push(''); }
+      if (wmPending.length) { wmLines.push(`\u23f3 *Pending \u2014 not yet filed (${wmPending.length}):*`); wmPending.forEach(c => wmLines.push(`  \u2022 ${c.name}`)); wmLines.push(''); }
+      if (wmFiled.length)   { wmLines.push(`\u2705 *Filed (${wmFiled.length}):*`); wmFiled.forEach(c => wmLines.push(`  \u2022 ${c.name}`)); }
+      if (!wmMissing.length && !wmPending.length) wmLines.push('\u2705 *All clients have filed \u2014 great work!*');
+      else wmLines.push('', `_Add filing: \`add ${wmType} [client] ${wmPeriod}\` \u00b7 Mark done: \`done [client] ${wmType}\`_`);
+      await send(wmLines.join('\n'));
+      return new Response('OK');
+    }
+
+    // ── UPDATE TALLY ──────────────────────────────────────────────────────────
+    if (it === 'update_tally') {
+      type TallyKey = 'tallyUpdated'|'bankReconciled'|'financialsPrep'|'accountsFinalized'|'adjustmentsPassed';
+      const TALLY_STEPS: Array<[TallyKey, string, string[]]> = [
+        ['tallyUpdated',      'Tally Updated',      ['tally updat','tally done','tally update','step 1','step1']],
+        ['bankReconciled',    'Bank Reconciled',     ['bank rec','bank reconcil','step 2','step2']],
+        ['financialsPrep',    'Financials Prepared', ['financial','step 3','step3']],
+        ['accountsFinalized', 'Accounts Finalized',  ['accounts final','accounts done','finalized','accounts complet','step 4','step4']],
+        ['adjustmentsPassed', 'Adjustments Passed',  ['adjustment','step 5','step5']],
+      ];
+      const utLc = rawText.toLowerCase();
+      let utStep: TallyKey|null = null; let utLabel = '';
+      for (const [key, label, kws] of TALLY_STEPS) {
+        if (kws.some(k => utLc.includes(k))) { utStep = key; utLabel = label; break; }
+      }
+      const utClient = clients.find(c => !c.hidden && utLc.includes(c.name.toLowerCase().split(' ')[0]));
+      if (!utStep || !utClient) {
+        const stepList = TALLY_STEPS.map(([,l]) => `  \u2022 ${l}`).join('\n');
+        const hint = utStep ? `_Step detected: ${utLabel} \u2713 \u2014 add client name_` : utClient ? `_Client detected: ${utClient.name} \u2713 \u2014 add step_` : '_Specify both client and step_';
+        await send([`\ud83d\udcca *Tally Update \u2014 Usage:*`,'',`Examples:`,`\`mark tally updated for Alfa\``,`\`Alfa Hardware bank reconciled\``,`\`mark financials done for Zeetech\``,'',`Steps:`,stepList,'',hint].join('\n'));
+        return new Response('OK');
+      }
+      const utExisting = tally.find(t => t.clientId === utClient.id);
+      const utYr = new Date().getFullYear();
+      const utBase: TallyProgress = utExisting || { id: uid(), year: utYr, clientId: utClient.id, tallyUpdated: false, bankReconciled: false, financialsPrep: false, accountsFinalized: false, adjustmentsPassed: false };
+      const utUpdated = { ...utBase, [utStep]: true };
+      const newTally = utExisting ? tally.map(t => t.clientId === utClient.id ? utUpdated : t) : [...tally, utUpdated];
+      await save(supa, { ...state, tallyProgress: newTally });
+      const utVals = [utUpdated.tallyUpdated, utUpdated.bankReconciled, utUpdated.financialsPrep, utUpdated.accountsFinalized, utUpdated.adjustmentsPassed];
+      const utDone = utVals.filter(Boolean).length;
+      const utLines = [
+        `\u2705 *${utClient.name} \u2014 ${utLabel} done!*`,
+        utDone === 5 ? '\ud83c\udfc6 *Year-end COMPLETE!* \ud83c\udf89' : `Progress: [${'\u2593'.repeat(utDone)}${'\u2591'.repeat(5-utDone)}] ${utDone}/5`,
+        '',
+        ...TALLY_STEPS.map(([k,l]) => `  ${utUpdated[k] ? '\u2705' : '\u2b1c'} ${l}`),
+      ];
+      await send(utLines.join('\n'));
+      return new Response('OK');
+    }
+
     // Hours keyword fallback
     if (lc.includes('hour') || lc.includes('worked') || lc.includes('timesheet')) {
       const wd_u = wh[isoWeekKey()] || {};
@@ -1161,7 +1273,35 @@ Deno.serve(async (req) => {
       return new Response('OK');
     }
 
-    // Month name in message (e.g. "april returns", "march VAT")
+    // Tax type + month name — show who-filed status
+    const TAX_LIST_FB = ['VAT','PAYE','SDL','NSSF','WCF','WHT','HESLB'];
+    const fbTaxType = TAX_LIST_FB.find(t => lc.includes(t.toLowerCase()));
+    const fbMoIdx   = MO_L.findIndex(m => lc.includes(m.toLowerCase()));
+    if (fbTaxType && fbMoIdx !== -1) {
+      const fbYr     = new Date().getFullYear();
+      const fbPeriod = `${fbYr}-${String(fbMoIdx+1).padStart(2,'0')}`;
+      const fbClients = clients.filter(c => !c.hidden && (c.taxTypes||[]).includes(fbTaxType));
+      const fbFiled   = fbClients.filter(c => returns.some(r => r.clientId===c.id && r.taxType===fbTaxType && r.period===fbPeriod && r.status==='completed'));
+      const fbPend    = fbClients.filter(c => returns.some(r => r.clientId===c.id && r.taxType===fbTaxType && r.period===fbPeriod && r.status!=='completed'));
+      const fbMiss    = fbClients.filter(c => !returns.some(r => r.clientId===c.id && r.taxType===fbTaxType && r.period===fbPeriod));
+      const fbDd = taxDueDate(fbTaxType, fbPeriod);
+      const fbDdStr = fbDd ? ` · due ${fmtDate(fbDd)} (${fmtDiff(daysDiff(fbDd))})` : '';
+      const fbLines: string[] = [`📋 *${fbTaxType} ${fmtPeriod(fbPeriod)}${fbDdStr}*`, `_${fbClients.length} client${fbClients.length!==1?'s':''} track ${fbTaxType}_`, ''];
+      if (fbMiss.length)  { fbLines.push(`❌ *No record (${fbMiss.length}):*`);  fbMiss.forEach(c => fbLines.push(`  • ${c.name}`));  fbLines.push(''); }
+      if (fbPend.length)  { fbLines.push(`⏳ *Pending (${fbPend.length}):*`);   fbPend.forEach(c => fbLines.push(`  • ${c.name}`));   fbLines.push(''); }
+      if (fbFiled.length) { fbLines.push(`✅ *Filed (${fbFiled.length}):*`);    fbFiled.forEach(c => fbLines.push(`  • ${c.name}`)); }
+      if (!fbMiss.length && !fbPend.length) fbLines.push('✅ *All clients filed!*');
+      else fbLines.push('', `_Add: \`add ${fbTaxType} [client] ${fbPeriod}\` · Done: \`done [client] ${fbTaxType}\`_`);
+      await send(fbLines.join('\n'));
+      return new Response('OK');
+    }
+    // Tax type only — show all pending for that type
+    if (fbTaxType) {
+      const fbPendList = pending.filter(r => r.taxType === fbTaxType);
+      if (fbPendList.length) { await send([`📋 *Pending ${fbTaxType} (${fbPendList.length}):*`, '', ...fbPendList.map(r => retLine(r, cm)), '', `_\`done [client] ${fbTaxType}\` to mark filed_`].join('\n')); return new Response('OK'); }
+    }
+
+    // Month name in message (e.g. "april returns", "march")
     const mIdx = MO_L.findIndex(m => lc.includes(m.toLowerCase()));
     if (mIdx !== -1) {
       const yr     = new Date().getFullYear();
