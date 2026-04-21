@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AppProvider, useApp, useSyncStatus } from './context/AppContext.jsx';
+import CommandPalette from './components/CommandPalette.jsx';
 import Dashboard      from './pages/Dashboard.jsx';
 import Clients        from './pages/Clients.jsx';
 import Tasks          from './pages/Tasks.jsx';
@@ -44,7 +45,7 @@ const Icons = {
   ),
   History: () => (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
     </svg>
   ),
   Tally: () => (
@@ -163,6 +164,303 @@ function useInstallPWA() {
 
   return { canInstall, install: promptInstall, isStandalone: isRunningStandalone() };
 }
+// ─── Brain Dump Modal ────────────────────────────────────────────────────────
+
+const BD_COLORS = [
+  { id: 'yellow', dot: 'bg-yellow-400' },
+  { id: 'blue',   dot: 'bg-blue-400'   },
+  { id: 'green',  dot: 'bg-green-400'  },
+  { id: 'pink',   dot: 'bg-pink-400'   },
+  { id: 'purple', dot: 'bg-purple-400' },
+  { id: 'orange', dot: 'bg-orange-400' },
+];
+
+function BrainDumpModal({ isOpen, onClose, dispatch }) {
+  const [mode,    setMode]    = useState('note'); // 'note' | 'task'
+  const [text,    setText]    = useState('');
+  const [color,   setColor]   = useState('yellow');
+  const [priority,setPriority] = useState('high');
+  const [dueDate, setDueDate]  = useState('');
+  const taRef = useRef(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      const today = new Date().toISOString().slice(0, 10);
+      setMode('note'); setText(''); setColor('yellow'); setPriority('high'); setDueDate(today);
+      setTimeout(() => taRef.current?.focus(), 30);
+    }
+  }, [isOpen]);
+
+  function handleSave() {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const lines = trimmed.split('\n');
+    const firstLine = lines[0].slice(0, 60);
+    const now = new Date();
+    const hhmm = now.toTimeString().slice(0, 5);
+    const title = firstLine || `Quick Capture – ${hhmm}`;
+    const rest  = lines.slice(1).join('\n').trim();
+
+    if (mode === 'note') {
+      dispatch({ type: 'ADD_NOTE', payload: { title, content: trimmed, color, category: 'General', pinned: false } });
+    } else {
+      dispatch({ type: 'ADD_TASK', payload: {
+        title,
+        description: rest,
+        dueDate,
+        status:   'pending',
+        priority,
+        category: 'Brain Dump',
+        clientId: '',
+        taxType:  '',
+      }});
+    }
+    onClose();
+  }
+
+  function handleKeyDown(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleSave(); }
+    if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+  }
+
+  const wc = text.trim() ? text.trim().split(/\s+/).length : 0;
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="relative w-full max-w-lg bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-fade-in">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <div className="flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+            {[['note', '📝 Note'], ['task', '✓ Task']].map(([m, label]) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={cn(
+                  'px-3 py-1.5 text-xs font-semibold rounded-lg transition',
+                  mode === m
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5 rounded-lg transition">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        {/* Textarea */}
+        <div className="px-5 pb-3">
+          <textarea
+            ref={taRef}
+            value={text}
+            onChange={e => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={mode === 'note'
+              ? "Get it out of your head...\n\nFirst line becomes the title. Supports **bold**, *italic*, - lists."
+              : "What needs to be done?\n\nFirst line becomes the task title."}
+            rows={6}
+            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none leading-relaxed font-mono transition"
+          />
+          <p className="text-[10px] text-gray-400 mt-1">{wc} word{wc !== 1 ? 's' : ''} · Ctrl+Enter to save · Esc to cancel</p>
+        </div>
+
+        {/* Mode-specific extras */}
+        <div className="px-5 pb-4 flex items-center gap-3 flex-wrap">
+          {mode === 'note' && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 dark:text-gray-400">Color:</span>
+              {BD_COLORS.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => setColor(c.id)}
+                  className={cn(
+                    'w-5 h-5 rounded-full transition-all',
+                    c.dot,
+                    color === c.id ? 'ring-2 ring-offset-1 ring-gray-500 dark:ring-gray-400 dark:ring-offset-gray-900 scale-125' : 'opacity-60 hover:opacity-100'
+                  )}
+                />
+              ))}
+            </div>
+          )}
+          {mode === 'task' && (
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                {[['low','Low'],['medium','Med'],['high','High']].map(([p, label]) => (
+                  <button
+                    key={p}
+                    onClick={() => setPriority(p)}
+                    className={cn(
+                      'px-2.5 py-1 rounded-md text-xs font-semibold transition',
+                      priority === p
+                        ? p === 'high' ? 'bg-red-600 text-white shadow-sm'
+                          : p === 'medium' ? 'bg-amber-500 text-white shadow-sm'
+                          : 'bg-gray-500 text-white shadow-sm'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-500">Due:</span>
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={e => setDueDate(e.target.value)}
+                  className="text-xs px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-5 pb-5">
+          <button onClick={onClose} className="btn-secondary px-4 py-2 text-sm">Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={!text.trim()}
+            className="btn btn-primary px-5 py-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            Save {mode === 'note' ? 'Note' : 'Task'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Storage Usage Bar ────────────────────────────────────────────────────────
+
+function StorageUsageSection() {
+  const [dbBytes,  setDbBytes]  = useState(null);
+  const [rowBytes, setRowBytes] = useState(null);
+  const [loading,  setLoading]  = useState(true);
+  const [rpcMissing, setRpcMissing] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchStats() {
+      setLoading(true);
+      const { data, error } = await supabase.rpc('get_storage_stats');
+      if (cancelled) return;
+      if (error || !data) {
+        setRpcMissing(true);
+      } else {
+        setDbBytes(data.db_bytes);
+        setRowBytes(data.row_bytes);
+        setRpcMissing(false);
+      }
+      setLoading(false);
+    }
+    fetchStats();
+    return () => { cancelled = true; };
+  }, []);
+
+  function fmtSize(b) {
+    if (b == null)          return '—';
+    if (b < 1024)           return `${b} B`;
+    if (b < 1024 * 1024)    return `${(b / 1024).toFixed(1)} KB`;
+    return `${(b / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  const SUPABASE_LIMIT = 500 * 1024 * 1024;
+  const dbPct  = dbBytes  != null ? (dbBytes  / SUPABASE_LIMIT) * 100 : 0;
+  const rowPct = rowBytes != null ? (rowBytes / SUPABASE_LIMIT) * 100 : 0;
+
+  let lsBytes = 0;
+  try {
+    const raw = localStorage.getItem('accountant-os-v1');
+    if (raw) lsBytes = new Blob([raw]).size;
+  } catch {}
+  const LS_LIMIT = 5 * 1024 * 1024;
+  const lsPct = (lsBytes / LS_LIMIT) * 100;
+
+  function Bar({ pct, colorClass, indeterminate }) {
+    return (
+      <div className="h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+        {indeterminate ? (
+          <div className="h-full w-1/3 rounded-full bg-gray-400 dark:bg-gray-500 animate-pulse" />
+        ) : (
+          <div
+            className={cn('h-full rounded-full transition-all duration-700', colorClass)}
+            style={{ width: `${Math.max(pct, 0.12)}%` }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3.5">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Storage Usage</p>
+        {loading && (
+          <span className="text-[10px] text-blue-500 dark:text-blue-400 animate-pulse">Fetching live data…</span>
+        )}
+      </div>
+
+      {rpcMissing && (
+        <div className="text-[10px] leading-relaxed text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded-lg px-3 py-2">
+          Live DB stats unavailable. Run <code className="font-mono bg-amber-100 dark:bg-amber-900/40 px-1 rounded">get_storage_stats()</code> function in your Supabase SQL Editor to enable accurate tracking.
+        </div>
+      )}
+
+      {/* Total database size */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-gray-600 dark:text-gray-400 font-medium">Total Database Size</span>
+          <span className="tabular-nums text-gray-500 dark:text-gray-500">
+            {fmtSize(dbBytes)} <span className="text-gray-300 dark:text-gray-700">/</span> 500 MB
+          </span>
+        </div>
+        <Bar pct={dbPct} colorClass="bg-blue-500" indeterminate={loading} />
+        <p className="text-[10px] text-gray-400 dark:text-gray-600">
+          {!loading && dbBytes != null
+            ? `${dbPct < 0.01 ? '< 0.01' : dbPct.toFixed(4)}% — real PostgreSQL measurement`
+            : 'Measured directly from PostgreSQL'}
+        </p>
+      </div>
+
+      {/* User's data row */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-gray-600 dark:text-gray-400 font-medium">Your Data Row (JSONB)</span>
+          <span className="tabular-nums text-gray-500 dark:text-gray-500">
+            {fmtSize(rowBytes)}
+          </span>
+        </div>
+        <Bar pct={rowPct} colorClass="bg-indigo-500" indeterminate={loading} />
+        <p className="text-[10px] text-gray-400 dark:text-gray-600">Actual column size in the database</p>
+      </div>
+
+      {/* localStorage */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-gray-600 dark:text-gray-400 font-medium">Local Storage</span>
+          <span className="tabular-nums text-gray-500 dark:text-gray-500">
+            {fmtSize(lsBytes)} <span className="text-gray-300 dark:text-gray-700">/</span> ~5 MB
+          </span>
+        </div>
+        <Bar pct={lsPct} colorClass={lsPct > 80 ? 'bg-red-500' : lsPct > 50 ? 'bg-amber-500' : 'bg-green-500'} />
+        <p className="text-[10px] text-gray-400 dark:text-gray-600">{lsPct.toFixed(2)}% used</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Settings Modal ───────────────────────────────────────────────────────────
 
 function SettingsModal({ isOpen, onClose, onLogout, userEmail }) {
@@ -257,6 +555,10 @@ function SettingsModal({ isOpen, onClose, onLogout, userEmail }) {
 
         <hr className="border-gray-200 dark:border-gray-800" />
 
+        <StorageUsageSection />
+
+        <hr className="border-gray-200 dark:border-gray-800" />
+
         <div>
           <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Data Backup</p>
           <div className="space-y-2">
@@ -308,6 +610,11 @@ function SettingsModal({ isOpen, onClose, onLogout, userEmail }) {
 
         <hr className="border-gray-200 dark:border-gray-800" />
 
+        {/* Telegram Bot */}
+        <TelegramSection />
+
+        <hr className="border-gray-200 dark:border-gray-800" />
+
         {/* Signed-in user + logout */}
         <div className="space-y-2">
           <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/60 rounded-xl">
@@ -328,6 +635,77 @@ function SettingsModal({ isOpen, onClose, onLogout, userEmail }) {
         </div>
       </div>
     </Modal>
+  );
+}
+
+// ─── Telegram Settings Section ───────────────────────────────────────────────
+
+function TelegramSection() {
+  const [testing,  setTesting]  = useState(false);
+  const [testMsg,  setTestMsg]  = useState(null); // 'ok' | 'error' | null
+  const [open,     setOpen]     = useState(false);
+
+  async function sendTest() {
+    setTesting(true); setTestMsg(null);
+    try {
+      const { error } = await supabase.functions.invoke('telegram-morning-brief');
+      setTestMsg(error ? 'error' : 'ok');
+    } catch { setTestMsg('error'); }
+    finally { setTesting(false); }
+    setTimeout(() => setTestMsg(null), 4000);
+  }
+
+  return (
+    <div className="space-y-3">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-2 w-full text-left"
+      >
+        <svg className={cn('w-3 h-3 text-gray-400 transition-transform duration-200', open && 'rotate-90')} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Telegram Bot</span>
+        <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
+          Morning Brief
+        </span>
+      </button>
+
+      {open && (
+        <div className="space-y-3 pl-5">
+          <button
+            onClick={sendTest}
+            disabled={testing}
+            className={cn(
+              'w-full flex items-center justify-center gap-2 py-2 px-4 text-sm font-medium rounded-xl border transition',
+              testMsg === 'ok'
+                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700/50'
+                : testMsg === 'error'
+                ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-300 dark:border-red-700/50'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600',
+              testing && 'opacity-60 cursor-wait'
+            )}
+          >
+            {testing ? '📡 Sending…' : testMsg === 'ok' ? '✓ Message sent!' : testMsg === 'error' ? '✗ Failed — see setup' : '📱 Send Test Message'}
+          </button>
+
+          <div className="text-xs text-gray-500 dark:text-gray-400 space-y-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3">
+            <p className="font-semibold text-gray-700 dark:text-gray-200">One-time setup:</p>
+            <ol className="list-decimal pl-4 space-y-1.5 leading-relaxed">
+              <li>Message <code className="font-mono bg-gray-200 dark:bg-gray-700 px-1 rounded">@BotFather</code> on Telegram → <code className="font-mono bg-gray-200 dark:bg-gray-700 px-1 rounded">/newbot</code> → copy the token</li>
+              <li>Message your bot once, then visit <code className="font-mono bg-gray-200 dark:bg-gray-700 px-1 rounded">api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code> to find your Chat ID</li>
+              <li>In Supabase Dashboard → Edge Functions → Secrets, add:<br />
+                <code className="font-mono bg-gray-200 dark:bg-gray-700 px-1 rounded">TELEGRAM_BOT_TOKEN</code><br />
+                <code className="font-mono bg-gray-200 dark:bg-gray-700 px-1 rounded">TELEGRAM_CHAT_ID</code><br />
+                <code className="font-mono bg-gray-200 dark:bg-gray-700 px-1 rounded">APP_USER_ID</code> (your Supabase auth user ID)
+              </li>
+              <li>Deploy both Edge Functions from <code className="font-mono bg-gray-200 dark:bg-gray-700 px-1 rounded">supabase/functions/</code></li>
+              <li>In Supabase SQL Editor, schedule the cron job (see README in functions folder)</li>
+              <li>Register webhook: visit the URL shown in your <code className="font-mono bg-gray-200 dark:bg-gray-700 px-1 rounded">telegram-webhook</code> function logs</li>
+            </ol>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -444,7 +822,9 @@ function Sidebar({ currentView, onNavigate, onSettings, mobileOpen, onMobileClos
 function AppShell({ onLogout, userEmail }) {
   const { state, dispatch } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen,   setSettingsOpen]   = useState(false);
+  const [paletteOpen,    setPaletteOpen]    = useState(false);
+  const [brainDumpOpen,  setBrainDumpOpen]  = useState(false);
 
   // Lock body scroll when mobile sidebar is open
   useEffect(() => {
@@ -455,6 +835,27 @@ function AppShell({ onLogout, userEmail }) {
     }
     return () => { document.body.style.overflow = ''; };
   }, [mobileMenuOpen]);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    function handler(e) {
+      // Ctrl+K / Cmd+K — Command Palette (intercepts even in inputs)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setPaletteOpen(v => !v);
+        return;
+      }
+      // Backtick — Brain Dump (only when not typing in an input/textarea)
+      if (e.key === '`' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+        e.preventDefault();
+        setBrainDumpOpen(true);
+      }
+    }
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const currentView = state.currentView;
 
@@ -578,6 +979,36 @@ function AppShell({ onLogout, userEmail }) {
           </div>
         </main>
       </div>
+
+      {/* Floating Brain Dump button */}
+      <button
+        onClick={() => setBrainDumpOpen(true)}
+        className="fixed bottom-6 right-6 z-50 w-13 h-13 flex items-center justify-center rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white shadow-lg shadow-blue-600/40 transition-all duration-150 group"
+        title="Quick Capture (Backtick)"
+        style={{ width: '52px', height: '52px' }}
+      >
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+        <span className="absolute right-full mr-2.5 px-2 py-1 rounded-lg bg-gray-900 text-white text-xs font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
+          Quick Capture <kbd className="ml-1 font-mono opacity-70">`</kbd>
+        </span>
+      </button>
+
+      <CommandPalette
+        isOpen={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        state={state}
+        dispatch={dispatch}
+        onBrainDump={() => { setPaletteOpen(false); setBrainDumpOpen(true); }}
+        onSettings={() => { setPaletteOpen(false); setSettingsOpen(true); }}
+      />
+
+      <BrainDumpModal
+        isOpen={brainDumpOpen}
+        onClose={() => setBrainDumpOpen(false)}
+        dispatch={dispatch}
+      />
 
       <SettingsModal
         isOpen={settingsOpen}

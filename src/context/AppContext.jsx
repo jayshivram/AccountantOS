@@ -13,6 +13,7 @@ function getInitialState() {
       tallyProgress: saved.tallyProgress || [],
       cancellations: saved.cancellations  || [],
       notes:         saved.notes          || [],
+      pastebins:     saved.pastebins      || [],
       workingHours:  saved.workingHours   || {},
       hourFormat:    saved.hourFormat     || '24',
       currentView:   'dashboard',
@@ -26,6 +27,7 @@ function getInitialState() {
     tallyProgress: [],
     cancellations: [],
     notes:         [],
+    pastebins:     [],
     workingHours:  {},
     hourFormat:    '24',
     darkMode:      false,
@@ -136,11 +138,29 @@ function reducer(state, action) {
         notes: (state.notes || []).map(n => n.id === action.payload ? { ...n, pinned: !n.pinned } : n),
       };
 
+    // ── Pastebins ──
+    case 'ADD_PASTEBIN': {
+      const now = new Date().toISOString();
+      return {
+        ...state,
+        pastebins: [...(state.pastebins || []), { ...action.payload, id: uuid(), createdAt: now }],
+      };
+    }
+    case 'EDIT_PASTEBIN':
+      return {
+        ...state,
+        pastebins: (state.pastebins || []).map(p =>
+          p.id === action.payload.id ? { ...p, ...action.payload } : p
+        ),
+      };
+    case 'DELETE_PASTEBIN':
+      return { ...state, pastebins: (state.pastebins || []).filter(p => p.id !== action.payload) };
+
     // ── Import ──
     case 'IMPORT_DATA': {
       const { currentView, currentMonth, cancellations: _c, ...rest } = action.payload;
       // Never overwrite cancellations with a personal backup; they're managed separately.
-      return { ...state, ...rest, tallyProgress: rest.tallyProgress || [], notes: rest.notes || [] };
+      return { ...state, ...rest, tallyProgress: rest.tallyProgress || [], notes: rest.notes || [], pastebins: rest.pastebins || [] };
     }
 
     // ── Tally Progress ──

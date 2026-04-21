@@ -478,7 +478,8 @@ export default function WorkingHours() {
     const header = ['Day', 'Date', 'Time In', 'Break Start', 'Break Stop', 'Time Out', 'Net Hours'];
     const dataRows = DAYS.map((day, i) => {
       const e = weekData[day] || {};
-      return [day, fmtDate(weekDates[i]), e.timeIn || '', e.breakStart || '', e.breakStop || '', e.timeOut || '', fmtMins(netMinsPerDay[i])];
+      const fmt = t => use12h ? (to12h(t) || '') : (t || '');
+      return [day, fmtDate(weekDates[i]), fmt(e.timeIn), fmt(e.breakStart), fmt(e.breakStop), fmt(e.timeOut), fmtMins(netMinsPerDay[i])];
     });
     dataRows.push(['', 'TOTAL', '', '', '', '', fmtMins(totalMins)]);
     const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
@@ -491,7 +492,8 @@ export default function WorkingHours() {
     const header = ['Day', 'Date', 'Time In', 'Break Start', 'Break Stop', 'Time Out', 'Net Hours'];
     const rows = DAYS.map((day, i) => {
       const e = weekData[day] || {};
-      return [day, fmtDate(weekDates[i]), e.timeIn || '–', e.breakStart || '–', e.breakStop || '–', e.timeOut || '–', fmtMins(netMinsPerDay[i])];
+      const fmt = t => use12h ? (to12h(t) || '–') : (t || '–');
+      return [day, fmtDate(weekDates[i]), fmt(e.timeIn), fmt(e.breakStart), fmt(e.breakStop), fmt(e.timeOut), fmtMins(netMinsPerDay[i])];
     });
     rows.push(['', 'TOTAL', '', '', '', '', fmtMins(totalMins)]);
 
