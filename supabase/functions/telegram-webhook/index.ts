@@ -27,7 +27,11 @@ function fmtPeriod(period: string): string {
 }
 function fmtDate(iso: string): string {
   const [, mo, dy] = iso.split('-').map(Number);
-  return `${MO_S[mo-1]} ${dy}`;
+  return `${String(dy).padStart(2,'0')}/${String(mo).padStart(2,'0')}`;
+}
+function fmtDateFull(iso: string): string {
+  const [yr, mo, dy] = iso.split('-').map(Number);
+  return `${String(dy).padStart(2,'0')}/${String(mo).padStart(2,'0')}/${yr}`;
 }
 
 function taxDueDate(taxType: string, period: string): string | null {
@@ -47,6 +51,9 @@ function daysDiff(dateStr: string): number {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   return Math.round((new Date(dateStr + 'T00:00:00').getTime() - today.getTime()) / 86_400_000);
 }
+// Tanzania EAT = UTC+3. Edge functions run UTC, so we offset by +3h for local time.
+function localNow(): Date { const d = new Date(); d.setTime(d.getTime() + 3 * 3_600_000); return d; }
+function localHour(): number { return localNow().getHours(); }
 
 function isActive(r: TaxReturn, cm: Map<string, Client>): boolean {
   if (r.status === 'completed') return false;
@@ -170,6 +177,10 @@ function detectIntent(raw: string): string {
   if (/\b(who.*(hasn.?t|haven.?t|not\s+filed|missing|didn.?t|still\s+pending|remaining)|which.*(client|company).*(haven.?t|hasn.?t|not\s+filed|missing|still|pending)|(remaining|missing|unfiled|not.?filed)\s+.*(return|vat|paye|sdl|nssf|wcf|wht))\b/.test(t)) return 'who_missing';
   if (/\b(vat|paye|sdl|nssf|wcf|wht|heslb)\b.{0,40}\b(remaining|missing|unfiled|pending|status|who|which|filed|client)\b/.test(t)) return 'who_missing';
   if (/\b(status|progress|overview|report)\s+(of\s+|for\s+)?(vat|paye|sdl|nssf|wcf|wht)\b/.test(t)) return 'who_missing';
+  // Next / upcoming deadline
+  if (/^next\s*$/.test(t) || /\b(next deadline|what.*next.*due|upcoming deadline)\b/.test(t)) return 'next';
+  if (/\b(when.*(is|are|does).*(vat|paye|sdl|nssf|wcf|wht|heslb).*due|when.*(vat|paye|sdl|nssf|wcf|wht|heslb)\s+(deadline|due)|deadline\s+(for|of)?\s*(vat|paye|sdl|nssf|wcf|wht|heslb))\b/.test(t)) return 'deadline_query';
+  if (/^deadline\s+(vat|paye|sdl|nssf|wcf|wht|heslb)/i.test(raw)) return 'deadline_query';
   // Tally step updates
   if (/\b(mark|update|tick|set|complete|done)\s+(tally|year.?end|bank\s+rec|bank\s+reconcil|financial|accounts?\s+final|adjustments?)\b/.test(t)) return 'update_tally';
   if (/\b(bank\s+reconcil|financials?\s+(prep|done|complete|prepar)|accounts?\s+(final|done|complet)|tally\s+(update|updat|done|upd)|adjustments?\s+(pass|done))\b/.test(t)) return 'update_tally';
@@ -234,8 +245,13 @@ Deno.serve(async (req) => {
 
     // ── GREETING ──────────────────────────────────────────────────────────
     if (it === 'greeting') {
-      const h = new Date().getHours();
-      const g = h < 5 ? 'Up early' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+      const h = localHour();
+      const g = h < 3 ? 'Up late 🌙'
+              : h < 6 ? 'Up early 🌅'
+              : h < 12 ? 'Good morning ☀️'
+              : h < 17 ? 'Good afternoon'
+              : h < 21 ? 'Good evening'
+              : 'Evening 🌙';
       const wk = isoWeekKey(); const wd = wh[wk] || {};
       const wkh = Object.values(wd).reduce((s, d) => s + calcDay(d), 0);
       const hiTasks = tasks.filter(t => t.status !== 'completed' && t.priority === 'high');
@@ -261,6 +277,7 @@ Deno.serve(async (req) => {
       }
       if (hiTasks.length) lines.push(`⚡ ${hiTasks.length} high-priority task${hiTasks.length > 1 ? 's' : ''} pending`);
       if (wkh > 0) lines.push(`⏱ ${wkh.toFixed(1)}h logged this week`);
+      if (state.botMuted) lines.push('', '_🔕 Morning brief is muted — send `unmute` to resume_');
       const allClear = !overdue.length && !dueToday.length && !hiTasks.length;
       lines.push('', allClear ? '_Have a great day! 😊_' : '_Say `focus` for your action list._');
       await send(lines.join('\n'));
@@ -307,6 +324,50 @@ Deno.serve(async (req) => {
       if (!count) lines.push('✅ *Nothing urgent — you\'re all caught up!*', '', '_Check `week` for upcoming returns._');
       else lines.push(`_${count} item${count > 1 ? 's' : ''} · \`done [client] [type]\` to mark returns filed_`);
       await send(lines.join('\n'));
+      return new Response('OK');
+    }
+
+    // ── NEXT DEADLINE ─────────────────────────────────────────────────────
+    if (it === 'next') {
+      if (!pending.length) { await send('✅ No pending returns — all clear!'); return new Response('OK'); }
+      const nxt = pending.find(r => { const dd = taxDueDate(r.taxType, r.period); return dd && daysDiff(dd) >= 0; });
+      if (!nxt) {
+        await send(`🔴 *${overdue.length} overdue return${overdue.length > 1 ? 's' : ''}!*\n\nRun \`overdue\` to see the full list.`);
+        return new Response('OK');
+      }
+      const nxtDd = taxDueDate(nxt.taxType, nxt.period)!;
+      const nxtD  = daysDiff(nxtDd);
+      const nxtSameDay = pending.filter(r => taxDueDate(r.taxType, r.period) === nxtDd);
+      const nxtLines = [
+        `⏰ *Next Deadline:*`, '',
+        `${urg(nxtD)} *${cm.get(nxt.clientId)?.name}* — ${nxt.taxType} ${fmtPeriod(nxt.period)}`,
+        `📅 Due: *${fmtDateFull(nxtDd)}* · _${fmtDiff(nxtD)}_`,
+      ];
+      if (nxtSameDay.length > 1) nxtLines.push('', `_${nxtSameDay.length - 1} more return${nxtSameDay.length > 2 ? 's' : ''} also due on this date_`);
+      if (overdue.length) nxtLines.push('', `🔴 _Also: ${overdue.length} overdue — run \`overdue\`_`);
+      await send(nxtLines.join('\n'));
+      return new Response('OK');
+    }
+
+    // ── DEADLINE QUERY ────────────────────────────────────────────────────
+    if (it === 'deadline_query') {
+      const dlM = rawText.match(/\b(VAT|PAYE|SDL|NSSF|WCF|WHT|HESLB)\b/i);
+      if (!dlM) { await send('_Specify a tax type, e.g. `deadline VAT` or `when is NSSF due?`_'); return new Response('OK'); }
+      const dlType = dlM[1].toUpperCase();
+      const dlList = pending.filter(r => r.taxType === dlType);
+      if (!dlList.length) { await send(`✅ No pending ${dlType} returns.`); return new Response('OK'); }
+      const dlDd = taxDueDate(dlList[0].taxType, dlList[0].period);
+      if (!dlDd) { await send(`No due date found for ${dlType}.`); return new Response('OK'); }
+      const dlD = daysDiff(dlDd);
+      const dlLines = [
+        `📅 *${dlType} Deadline: ${fmtDateFull(dlDd)}*`,
+        `_${fmtDiff(dlD)} — ${dlList.length} return${dlList.length > 1 ? 's' : ''} pending_`,
+        '',
+        ...dlList.slice(0, 8).map(r => `  ${urg(dlD)} *${cm.get(r.clientId)?.name}* — ${fmtPeriod(r.period)}`),
+      ];
+      if (dlList.length > 8) dlLines.push(`  _...+${dlList.length - 8} more_`);
+      dlLines.push('', `_\`done [client] ${dlType}\` to mark filed_`);
+      await send(dlLines.join('\n'));
       return new Response('OK');
     }
 
@@ -412,6 +473,11 @@ Deno.serve(async (req) => {
         '`tally` — Year-end progress per client with next step',
         '`export excel` — How to export data from the app', '',
         '━━━━━━━━━━━━━━━',
+        '⏰ *QUICK QUERIES*',
+        '`next` — Next upcoming deadline',
+        '`deadline VAT` — When is VAT due & who\'s pending',
+        '`when is NSSF due?` — Same, natural language', '',
+        '━━━━━━━━━━━━━━━',
         '🔔 *NOTIFICATIONS*',
         '`mute` — Pause the daily morning brief',
         '`unmute` — Resume the daily morning brief',
@@ -421,12 +487,13 @@ Deno.serve(async (req) => {
 
     // ── BRIEF ─────────────────────────────────────────────────────────────
     if (it === 'brief') {
-      const d   = new Date();
+      const ld  = localNow();
       const wk  = isoWeekKey(); const wd = wh[wk] || {};
       const wkh = Object.values(wd).reduce((s, e) => s + calcDay(e), 0);
       const pTasks = tasks.filter(t => t.status !== 'completed');
       const hi     = pTasks.filter(t => t.priority === 'high');
-      const lines: string[] = [`📊 *Brief — ${DY_L[d.getDay()]}, ${d.getDate()} ${MO_S[d.getMonth()]}*`, ''];
+      const briefDate = `${String(ld.getDate()).padStart(2,'0')}/${String(ld.getMonth()+1).padStart(2,'0')}/${ld.getFullYear()}`;
+      const lines: string[] = [`📊 *Brief — ${DY_L[ld.getDay()]}, ${briefDate}*`, ''];
       lines.push('📋 *Returns:*');
       if (overdue.length) {
         lines.push(`🔴 Overdue — ${overdue.length} return${overdue.length > 1 ? 's' : ''}:`);

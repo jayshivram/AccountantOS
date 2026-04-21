@@ -84,7 +84,7 @@ Deno.serve(async (_req) => {
     }
     function fmtDt(iso: string): string {
       const [, mo, dy] = iso.split('-').map(Number);
-      return `${MO_S[mo-1]} ${dy}`;
+      return `${String(dy).padStart(2,'0')}/${String(mo).padStart(2,'0')}`;
     }
 
     const pendingReturns: Array<{name: string; taxType: string; period: string; dd: string; diff: number}> = [];
@@ -107,11 +107,11 @@ Deno.serve(async (_req) => {
     const pendingTasks = tasks.filter(t => t.status !== 'completed');
     const highTasks    = pendingTasks.filter(t => t.priority === 'high');
 
-    // Format date
+    // Format date — use EAT (UTC+3) local time
     const now    = new Date();
+    const lnow   = new Date(now.getTime() + 3 * 3_600_000);
     const DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const dateStr = `${DAYS[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
+    const dateStr = `${DAYS[lnow.getDay()]}, ${String(lnow.getDate()).padStart(2,'0')}/${String(lnow.getMonth()+1).padStart(2,'0')}/${lnow.getFullYear()}`;
 
     const lines: string[] = [`☀️ *Good morning! ${dateStr}*`, ''];
 
@@ -166,7 +166,7 @@ Deno.serve(async (_req) => {
       lines.push('_Have a productive day! Reply `focus` for your action list._');
     }
 
-    lines.push('', '💬 `overdue` · `week` · `focus` · `tasks` · `client [name]` · `help`');
+    lines.push('', '💬 `overdue` · `week` · `focus` · `tasks` · `next` · `help`');
     const message = lines.join('\n');
 
     const tgRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
