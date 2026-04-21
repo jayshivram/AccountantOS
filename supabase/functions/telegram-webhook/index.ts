@@ -22,7 +22,8 @@ const DY_L = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Satur
 
 function fmtPeriod(period: string): string {
   const [yr, mo] = period.split('-').map(Number);
-  return (!yr || !mo || mo < 1 || mo > 12) ? period : `${MO_S[mo-1]} ${yr}`;
+  // App stores months 0-based (Jan=0, Dec=11)
+  return (!yr || mo === undefined || mo < 0 || mo > 11) ? period : `${MO_S[mo]} ${yr}`;
 }
 function fmtDate(iso: string): string {
   const [, mo, dy] = iso.split('-').map(Number);
@@ -32,14 +33,14 @@ function fmtDate(iso: string): string {
 function taxDueDate(taxType: string, period: string): string | null {
   if (!period.match(/^\d{4}-\d{2}$/)) return null;
   const [yr, mo] = period.split('-').map(Number);
-  const nm = mo === 12 ? 1 : mo + 1;
-  const ny = mo === 12 ? yr + 1 : yr;
+  // App stores months 0-based (Jan=0, Dec=11). Use JS Date to get next month in ISO.
+  const next = new Date(yr, mo + 1, 1);
   const pad = (n: number) => String(n).padStart(2, '0');
   const t = taxType.toUpperCase();
   let day = 7;
   if (t === 'VAT') day = 20;
   else if (t === 'NSSF' || t === 'WCF') day = 30;
-  return `${ny}-${pad(nm)}-${pad(day)}`;
+  return `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(day)}`;
 }
 
 function daysDiff(dateStr: string): number {
@@ -753,7 +754,7 @@ Deno.serve(async (req) => {
     // ── THIS MONTH ────────────────────────────────────────────────────────
     if (it === 'month') {
       const nd  = new Date();
-      const per = `${nd.getFullYear()}-${String(nd.getMonth() + 1).padStart(2, '0')}`;
+      const per = `${nd.getFullYear()}-${String(nd.getMonth()).padStart(2, '0')}`;  // 0-based month
       const list = pending.filter(r => r.period === per);
       if (!list.length) { await send(`📅 No pending returns for *${MO_L[nd.getMonth()]} ${nd.getFullYear()}*.\n\nUse \`pending\` to see all pending returns.`); return new Response('OK'); }
       const lines = [`📅 *${MO_L[nd.getMonth()]} ${nd.getFullYear()} Returns (${list.length}):*`, '', ...list.map(r => retLine(r, cm))];
@@ -1064,7 +1065,7 @@ Deno.serve(async (req) => {
         const arMKey = arMonthMatch[1].slice(0, 3).toLowerCase();
         const arMIdx = AR_MONTHS.indexOf(arMKey);
         const arYr   = arMonthMatch[2] ? parseInt(arMonthMatch[2]) : new Date().getFullYear();
-        arPeriod  = `${arYr}-${String(arMIdx + 1).padStart(2, '0')}`;
+        arPeriod  = `${arYr}-${String(arMIdx).padStart(2, '0')}`;  // 0-based month
         arClientQ = arRest.replace(arMonthMatch[0], '').replace(new RegExp(arType, 'i'), '').trim().toLowerCase();
       } else {
         arClientQ = arRest.replace(new RegExp(arType, 'i'), '').trim().toLowerCase();
@@ -1079,7 +1080,7 @@ Deno.serve(async (req) => {
         await send(`❓ No client matching _"${arClientQ}"_\n\nActive clients:\n${arSug}`);
         return new Response('OK');
       }
-      if (!arPeriod) { const nd = new Date(); arPeriod = `${nd.getFullYear()}-${String(nd.getMonth() + 1).padStart(2, '0')}`; }
+      if (!arPeriod) { const nd = new Date(); arPeriod = `${nd.getFullYear()}-${String(nd.getMonth()).padStart(2, '0')}`; }  // 0-based month
       const arDup = returns.find(r => r.clientId === arClient.id && r.taxType === arType && r.period === arPeriod && r.status !== 'completed');
       if (arDup) { await send(`⚠️ *${arClient.name}* already has a pending ${arType} for ${fmtPeriod(arPeriod)}.\n\nMark it done: \`done ${arClient.name.split(' ')[0]} ${arType}\``); return new Response('OK'); }
       const arNew: TaxReturn = { id: uid(), clientId: arClient.id, taxType: arType, period: arPeriod, status: 'pending' };
@@ -1202,8 +1203,8 @@ Deno.serve(async (req) => {
       const wmPM  = rawText.match(/(\d{4}-\d{2})/);
       const wmMM  = rawText.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s*(\d{4})?/i);
       if (wmPM) { wmPeriod = wmPM[1]; }
-      else if (wmMM) { const mi = MN_SHORT_WM.indexOf(wmMM[1].slice(0,3).toLowerCase()); const yr = wmMM[2] ? parseInt(wmMM[2]) : new Date().getFullYear(); wmPeriod = `${yr}-${String(mi+1).padStart(2,'0')}`; }
-      else { const d = new Date(); d.setMonth(d.getMonth()-1); wmPeriod = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+      else if (wmMM) { const mi = MN_SHORT_WM.indexOf(wmMM[1].slice(0,3).toLowerCase()); const yr = wmMM[2] ? parseInt(wmMM[2]) : new Date().getFullYear(); wmPeriod = `${yr}-${String(mi).padStart(2,'0')}`; }  // 0-based
+      else { const d = new Date(); d.setMonth(d.getMonth()-1); wmPeriod = `${d.getFullYear()}-${String(d.getMonth()).padStart(2,'0')}`; }  // 0-based
       if (!wmType) {
         await send(`📋 Include a tax type to check filing status.\n\nExamples:\n\`who hasn't filed NSSF March?\`\n\`PAYE April status\`\n\`WCF March missing clients\``);
         return new Response('OK');
@@ -1279,7 +1280,7 @@ Deno.serve(async (req) => {
     const fbMoIdx   = MO_L.findIndex(m => lc.includes(m.toLowerCase()));
     if (fbTaxType && fbMoIdx !== -1) {
       const fbYr     = new Date().getFullYear();
-      const fbPeriod = `${fbYr}-${String(fbMoIdx+1).padStart(2,'0')}`;
+      const fbPeriod = `${fbYr}-${String(fbMoIdx).padStart(2,'0')}`;  // 0-based month
       const fbClients = clients.filter(c => !c.hidden && (c.taxTypes||[]).includes(fbTaxType));
       const fbFiled   = fbClients.filter(c => returns.some(r => r.clientId===c.id && r.taxType===fbTaxType && r.period===fbPeriod && r.status==='completed'));
       const fbPend    = fbClients.filter(c => returns.some(r => r.clientId===c.id && r.taxType===fbTaxType && r.period===fbPeriod && r.status!=='completed'));
@@ -1305,7 +1306,7 @@ Deno.serve(async (req) => {
     const mIdx = MO_L.findIndex(m => lc.includes(m.toLowerCase()));
     if (mIdx !== -1) {
       const yr     = new Date().getFullYear();
-      const period = `${yr}-${String(mIdx + 1).padStart(2, '0')}`;
+      const period = `${yr}-${String(mIdx).padStart(2, '0')}`;  // 0-based month
       const list   = pending.filter(r => r.period === period);
       if (list.length) await send([`📅 *${MO_L[mIdx]} ${yr} Returns (${list.length}):*`, '', ...list.map(r => retLine(r, cm))].join('\n'));
       else await send(`✅ No pending returns for ${MO_L[mIdx]} ${yr}.`);
