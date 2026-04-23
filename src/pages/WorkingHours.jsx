@@ -203,6 +203,7 @@ function TimeCell({ value, onChange, scheme = 'green' }) {
           type="time"
           value={value || ''}
           onChange={e => onChange(e.target.value || null)}
+          onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); onChange(nowHHMM()); } }}
           className={cn(
             'w-full px-2.5 py-[7px] text-sm font-mono tabular-nums bg-transparent outline-none rounded-lg',
             value ? s.text : 'text-gray-400 dark:text-gray-600'
@@ -214,7 +215,7 @@ function TimeCell({ value, onChange, scheme = 'green' }) {
       <button
         type="button"
         onClick={() => onChange(nowHHMM())}
-        title="Set to current time"
+        title="Set to now (Ctrl+Enter)"
         className={cn('flex-shrink-0 p-1.5 rounded-lg transition', s.nowBtn)}
       >
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -425,6 +426,70 @@ function QuickJumpPicker({ currentYear, currentWeek, onNavigate, onClose }) {
   );
 }
 
+// ─── Day Timeline ────────────────────────────────────────────────────────────────
+
+const TIMELINE_START = 7 * 60;    // 07:00
+const TIMELINE_END   = 20 * 60;   // 20:00
+const TIMELINE_RANGE = TIMELINE_END - TIMELINE_START;
+
+function DayTimeline({ entry, use12h }) {
+  const inM  = toMins(entry.timeIn);
+  const outM = toMins(entry.timeOut);
+  const bsM  = toMins(entry.breakStart);
+  const beM  = toMins(entry.breakStop);
+
+  if (inM === null) return null;
+
+  const n    = new Date();
+  const nowM = n.getHours() * 60 + n.getMinutes();
+  const pct  = v => `${Math.max(0, Math.min(100, ((v - TIMELINE_START) / TIMELINE_RANGE) * 100)).toFixed(2)}%`;
+  const wid  = (a, b) => `${Math.max(0, Math.min(100, ((b - a) / TIMELINE_RANGE) * 100)).toFixed(2)}%`;
+
+  const onBreak      = bsM !== null && beM === null;
+  const effectiveOut = outM !== null ? outM : Math.min(nowM, TIMELINE_END);
+  const fmtLabel     = t => (use12h ? to12h(t) : t) || t;
+
+  const segments = [];
+  const seg1End = bsM !== null ? bsM : effectiveOut;
+  if (seg1End > inM) {
+    segments.push({ left: pct(inM), width: wid(inM, seg1End), color: 'bg-emerald-400 dark:bg-emerald-500' });
+  }
+  if (bsM !== null) {
+    const breakEffEnd = beM !== null ? beM : (onBreak ? Math.min(nowM, TIMELINE_END) : bsM);
+    if (breakEffEnd > bsM) {
+      segments.push({ left: pct(bsM), width: wid(bsM, breakEffEnd), color: 'bg-amber-300 dark:bg-amber-400' });
+    }
+    if (beM !== null) {
+      const seg2End = outM !== null ? outM : Math.min(nowM, TIMELINE_END);
+      if (seg2End > beM) {
+        segments.push({ left: pct(beM), width: wid(beM, seg2End), color: 'bg-emerald-400 dark:bg-emerald-500' });
+      }
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2.5 py-0.5">
+      <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500 w-[4.5rem] text-right flex-shrink-0 tabular-nums">
+        {fmtLabel(entry.timeIn)}
+      </span>
+      <div className="relative flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+        {segments.map((seg, idx) => (
+          <div
+            key={idx}
+            className={cn('absolute top-0 h-full', seg.color)}
+            style={{ left: seg.left, width: seg.width }}
+          />
+        ))}
+      </div>
+      <span className="text-[10px] font-mono text-gray-400 dark:text-gray-500 w-[4.5rem] flex-shrink-0 tabular-nums">
+        {entry.timeOut
+          ? fmtLabel(entry.timeOut)
+          : <span className="italic opacity-60">ongoing</span>}
+      </span>
+    </div>
+  );
+}
+
 // â”€â”€â”€ Working Hours Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function WorkingHours() {
@@ -436,6 +501,10 @@ export default function WorkingHours() {
   const [year, setYear] = useState(initYear);
   const [jumpOpen, setJumpOpen] = useState(false);
   const [confirmState, setConfirmState] = useState({ isOpen: false, day: null, field: null, value: null, currentValue: null });
+  const [showTimeline, setShowTimeline] = useState(false);
+  const [dailyTargetMins, setDailyTargetMins] = useState(() => {
+    try { const s = localStorage.getItem('wh-daily-target'); return s ? parseInt(s, 10) : 480; } catch { return 480; }
+  });
 
   const totalWeeks = useMemo(() => isoWeeksInYear(year), [year]);
   const weekKey    = `${year}-W${String(week).padStart(2, '0')}`;
@@ -466,6 +535,13 @@ export default function WorkingHours() {
   function goToCurrentWeek() {
     const now = currentISOWeek();
     setWeek(now.week); setYear(now.year);
+  }
+  function adjustTarget(delta) {
+    setDailyTargetMins(prev => {
+      const next = Math.max(60, Math.min(720, prev + delta));
+      try { localStorage.setItem('wh-daily-target', String(next)); } catch {}
+      return next;
+    });
   }
 
   const handleChange = useCallback((day, field, value) => {
@@ -675,6 +751,50 @@ export default function WorkingHours() {
 
       {/* â”€â”€ Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden">
+
+        {/* ── Toolbar ────────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
+          {/* Daily target control */}
+          <div className="flex items-center gap-2">
+            <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mr-0.5">Target</span>
+            <button
+              onClick={() => adjustTarget(-30)}
+              disabled={dailyTargetMins <= 60}
+              className="w-6 h-6 flex items-center justify-center rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-base leading-none transition"
+              aria-label="Decrease target"
+            >−</button>
+            <span className="text-sm font-bold text-gray-900 dark:text-white tabular-nums min-w-[3rem] text-center">
+              {fmtMins(dailyTargetMins)}
+            </span>
+            <button
+              onClick={() => adjustTarget(30)}
+              disabled={dailyTargetMins >= 720}
+              className="w-6 h-6 flex items-center justify-center rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-base leading-none transition"
+              aria-label="Increase target"
+            >+</button>
+            <span className="text-xs text-gray-400 dark:text-gray-500 ml-0.5">/ day</span>
+          </div>
+
+          {/* Timeline toggle */}
+          <button
+            onClick={() => setShowTimeline(t => !t)}
+            className={cn(
+              'flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg transition',
+              showTimeline
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+            )}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h10M4 14h7M4 18h4" />
+            </svg>
+            Timeline
+          </button>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
@@ -722,7 +842,7 @@ export default function WorkingHours() {
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            <tbody>
               {DAYS.map((day, i) => {
                 const entry     = weekData[day] || {};
                 const netMins   = netMinsPerDay[i];
@@ -732,96 +852,118 @@ export default function WorkingHours() {
                   date.getDate() === todayDate.getDate() &&
                   date.getMonth() === todayDate.getMonth() &&
                   date.getFullYear() === todayDate.getFullYear();
-                const isSat = day === 'Sat';
+                const isSat  = day === 'Sat';
+                const rowBg  = isToday ? 'bg-blue-50/50 dark:bg-blue-900/10'
+                             : isSat   ? 'bg-gray-50/40 dark:bg-gray-800/10' : '';
+                const pct    = netMins && netMins > 0
+                  ? Math.min(100, Math.round((netMins / dailyTargetMins) * 100))
+                  : 0;
 
                 return (
-                  <tr
-                    key={day}
-                    className={cn(
-                      'transition-colors',
-                      isToday ? 'bg-blue-50/50 dark:bg-blue-900/10' :
-                      isSat   ? 'bg-gray-50/40 dark:bg-gray-800/10' : ''
-                    )}
-                  >
-                    {/* Day label */}
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className={cn(
-                          'font-bold text-sm',
-                          isToday ? 'text-blue-600 dark:text-blue-400' :
-                          isSat   ? 'text-gray-500 dark:text-gray-500' :
-                                    'text-gray-900 dark:text-white'
-                        )}>
-                          {day}
-                        </span>
-                        {isToday && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-600 text-white leading-none">
-                            NOW
+                  <React.Fragment key={day}>
+                    <tr className={cn('border-b border-gray-100 dark:border-gray-800 transition-colors', rowBg)}>
+                      {/* Day label */}
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className={cn(
+                            'font-bold text-sm',
+                            isToday ? 'text-blue-600 dark:text-blue-400' :
+                            isSat   ? 'text-gray-500 dark:text-gray-500' :
+                                      'text-gray-900 dark:text-white'
+                          )}>
+                            {day}
                           </span>
-                        )}
-                      </div>
-                    </td>
+                          {isToday && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-600 text-white leading-none">
+                              NOW
+                            </span>
+                          )}
+                        </div>
+                      </td>
 
-                    {/* Date */}
-                    <td className="px-4 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap tabular-nums">
-                      {date ? fmtDate(date) : ''}
-                    </td>
+                      {/* Date */}
+                      <td className="px-4 py-2.5 text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap tabular-nums">
+                        {date ? fmtDate(date) : ''}
+                      </td>
 
-                    {/* Time In */}
-                    <td className="px-3 py-2">
-                      <TimeCell
-                        value={entry.timeIn}
-                        onChange={v => handleChange(day, 'timeIn', v)}
-                        scheme="green"
-                      />
-                    </td>
-
-                    {/* Break Start */}
-                    <td className="px-3 py-2">
-                      <TimeCell
-                        value={entry.breakStart}
-                        onChange={v => handleChange(day, 'breakStart', v)}
-                        scheme="amber"
-                      />
-                    </td>
-
-                    {/* Break Stop */}
-                    <td className="px-3 py-2">
-                      <TimeCell
-                        value={entry.breakStop}
-                        onChange={v => handleChange(day, 'breakStop', v)}
-                        scheme="amber"
-                      />
-                    </td>
-
-                    {/* Time Out */}
-                    <td className="px-3 py-2">
-                      <TimeCell
-                        value={entry.timeOut}
-                        onChange={v => handleChange(day, 'timeOut', v)}
-                        scheme="red"
-                      />
-                    </td>
-
-                    {/* Net Hours */}
-                    <td className="px-4 py-2.5 text-right">
-                      <span className={cn(
-                        'font-bold text-sm tabular-nums',
-                        netMins && netMins > 0
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : 'text-gray-300 dark:text-gray-700'
-                      )}>
-                        {fmtMins(netMins)}
-                      </span>
-                      {isToday && isCurrentWeek && entry.timeIn && !entry.timeOut && (
-                        <LiveNetTimer
-                          timeIn={entry.timeIn}
-                          breakStart={entry.breakStart}
-                          breakStop={entry.breakStop}
+                      {/* Time In */}
+                      <td className="px-3 py-2">
+                        <TimeCell
+                          value={entry.timeIn}
+                          onChange={v => handleChange(day, 'timeIn', v)}
+                          scheme="green"
                         />
-                      )}
-                    </td>
-                  </tr>
+                      </td>
+
+                      {/* Break Start */}
+                      <td className="px-3 py-2">
+                        <TimeCell
+                          value={entry.breakStart}
+                          onChange={v => handleChange(day, 'breakStart', v)}
+                          scheme="amber"
+                        />
+                      </td>
+
+                      {/* Break Stop */}
+                      <td className="px-3 py-2">
+                        <TimeCell
+                          value={entry.breakStop}
+                          onChange={v => handleChange(day, 'breakStop', v)}
+                          scheme="amber"
+                        />
+                      </td>
+
+                      {/* Time Out */}
+                      <td className="px-3 py-2">
+                        <TimeCell
+                          value={entry.timeOut}
+                          onChange={v => handleChange(day, 'timeOut', v)}
+                          scheme="red"
+                        />
+                      </td>
+
+                      {/* Net Hours + progress bar */}
+                      <td className="px-4 py-2.5 text-right min-w-[100px]">
+                        <span className={cn(
+                          'font-bold text-sm tabular-nums',
+                          netMins && netMins > 0
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-gray-300 dark:text-gray-700'
+                        )}>
+                          {fmtMins(netMins)}
+                        </span>
+                        {isToday && isCurrentWeek && entry.timeIn && !entry.timeOut && (
+                          <LiveNetTimer
+                            timeIn={entry.timeIn}
+                            breakStart={entry.breakStart}
+                            breakStop={entry.breakStop}
+                          />
+                        )}
+                        {pct > 0 && (
+                          <div className="mt-1.5 w-full h-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                            <div
+                              className={cn(
+                                'h-full rounded-full transition-all duration-500',
+                                pct >= 100 ? 'bg-emerald-500'
+                                : pct >= 80 ? 'bg-amber-400'
+                                : 'bg-rose-400'
+                              )}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+
+                    {/* Timeline sub-row */}
+                    {showTimeline && entry.timeIn && (
+                      <tr className={cn('transition-colors', rowBg)} style={{ borderTop: 'none' }}>
+                        <td colSpan={7} className="px-4 pb-2 pt-0">
+                          <DayTimeline entry={entry} use12h={use12h} />
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
@@ -856,9 +998,11 @@ export default function WorkingHours() {
         onClose={() => setConfirmState(s => ({ ...s, isOpen: false }))}
         onConfirm={confirmChange}
         title="Confirm Time Change"
-        message={confirmState.value 
-          ? `Are you sure you want to change the time from ${use12h ? to12h(confirmState.currentValue) : confirmState.currentValue} to ${use12h ? to12h(confirmState.value) : confirmState.value}?`
-          : `Are you sure you want to clear the time (currently ${use12h ? to12h(confirmState.currentValue) : confirmState.currentValue})?`}
+        message={confirmState.value ? 'Overwrite the existing time entry?' : 'Clear the saved time entry?'}
+        comparison={{
+          from: use12h ? to12h(confirmState.currentValue) : confirmState.currentValue,
+          to:   confirmState.value ? (use12h ? to12h(confirmState.value) : confirmState.value) : null,
+        }}
         confirmLabel="Confirm"
         danger={false}
       />

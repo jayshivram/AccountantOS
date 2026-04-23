@@ -57,11 +57,18 @@ function escapeHtml(str) {
 }
 
 function applyInline(text) {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g,     '<em>$1</em>')
-    .replace(/__(.+?)__/g,     '<u>$1</u>')
-    .replace(/~~(.+?)~~/g,     '<s>$1</s>');
+  // Process bold first using a placeholder so the italic regex doesn't steal bold markers
+  const boldSegments = [];
+  let result = text.replace(/\*\*(.+?)\*\*/g, (_, inner) => {
+    boldSegments.push(inner);
+    return `\x00${boldSegments.length - 1}\x00`;
+  });
+  result = result
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/__(.+?)__/g, '<u>$1</u>')
+    .replace(/~~(.+?)~~/g, '<s>$1</s>');
+  result = result.replace(/\x00(\d+)\x00/g, (_, i) => `<strong>${boldSegments[+i]}</strong>`);
+  return result;
 }
 
 function renderMarkdown(text) {
@@ -71,6 +78,20 @@ function renderMarkdown(text) {
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
+    // Headings
+    if (/^## /.test(line)) {
+      out.push(`<h2 class="text-base font-semibold text-gray-900 mt-2 mb-0.5">${applyInline(escapeHtml(line.replace(/^## /, '')))}</h2>`);
+      i++; continue;
+    }
+    if (/^# /.test(line)) {
+      out.push(`<h1 class="text-lg font-bold text-gray-900 mt-2 mb-0.5">${applyInline(escapeHtml(line.replace(/^# /, '')))}</h1>`);
+      i++; continue;
+    }
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) {
+      out.push('<hr class="my-2 border-gray-300 dark:border-gray-600" />');
+      i++; continue;
+    }
     if (/^[-*] /.test(line)) {
       const items = [];
       while (i < lines.length && /^[-*] /.test(lines[i])) {
@@ -103,6 +124,9 @@ function renderMarkdown(text) {
 function stripMarkdown(text) {
   if (!text) return '';
   return text
+    .replace(/^##+ /gm,        '')
+    .replace(/^# /gm,          '')
+    .replace(/^---+$/gm,       '')
     .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/\*(.+?)\*/g,     '$1')
     .replace(/__(.+?)__/g,     '$1')
@@ -151,6 +175,22 @@ function applyFormat(textarea, setContent, type) {
     newText  = value.slice(0, start) + prefixed + value.slice(end);
     newStart = start;
     newEnd   = start + prefixed.length;
+  } else if (type === 'h1') {
+    // Insert '# ' at the start of the current/selected line
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+    const prefix = value.slice(lineStart, lineStart + 3) === '## ' ? '' : value.slice(lineStart, lineStart + 2) === '# ' ? '' : '# ';
+    const stripped = value.slice(lineStart, end).replace(/^#{1,2} /, '');
+    const insertion = `# ${stripped}`;
+    newText  = value.slice(0, lineStart) + insertion + value.slice(end);
+    newStart = lineStart + insertion.length;
+    newEnd   = lineStart + insertion.length;
+  } else if (type === 'h2') {
+    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+    const stripped = value.slice(lineStart, end).replace(/^#{1,2} /, '');
+    const insertion = `## ${stripped}`;
+    newText  = value.slice(0, lineStart) + insertion + value.slice(end);
+    newStart = lineStart + insertion.length;
+    newEnd   = lineStart + insertion.length;
   }
 
   setContent(newText);
@@ -322,7 +362,7 @@ function NoteViewModal({ note, isOpen, onClose, onEdit, onDuplicate }) {
         )}>
           {note.content ? (
             <div
-              className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1 [&_li]:my-0.5 [&_strong]:font-bold [&_em]:italic [&_u]:underline [&_s]:line-through"
+              className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1 [&_li]:my-0.5 [&_strong]:font-bold [&_em]:italic [&_u]:underline [&_s]:line-through [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mt-2 [&_h1]:mb-0.5 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-2 [&_h2]:mb-0.5 [&_hr]:my-2 [&_hr]:border-gray-300 dark:[&_hr]:border-gray-600"
               dangerouslySetInnerHTML={{ __html: renderMarkdown(note.content) }}
             />
           ) : (
@@ -407,11 +447,13 @@ function NoteModal({ note, isOpen, onClose, onSave, onDelete }) {
   const isNew = !note?.id;
   const [form, setForm] = useState(note || BLANK_NOTE);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
   const textareaRef = useRef(null);
 
   useEffect(() => {
     setForm(note || BLANK_NOTE);
     setConfirmDelete(false);
+    setPreviewMode(false);
   }, [note, isOpen]);
 
   const canSave = form.title.trim() || form.content.trim();
@@ -426,9 +468,13 @@ function NoteModal({ note, isOpen, onClose, onSave, onDelete }) {
 
   function handleKeyDown(e) {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSave(); return; }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'b')     { e.preventDefault(); handleFormat('bold');      return; }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'i')     { e.preventDefault(); handleFormat('italic');    return; }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'u')     { e.preventDefault(); handleFormat('underline'); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'b' && !e.shiftKey) { e.preventDefault(); handleFormat('bold');      return; }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'i')                { e.preventDefault(); handleFormat('italic');    return; }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'u')                { e.preventDefault(); handleFormat('underline'); return; }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'B')  { e.preventDefault(); handleFormat('bullet');    return; }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'O')  { e.preventDefault(); handleFormat('numbered');  return; }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'H')  { e.preventDefault(); handleFormat('h1');        return; }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S')  { e.preventDefault(); handleFormat('h2');        return; }
   }
 
   function handleFormat(type) {
@@ -468,11 +514,14 @@ function NoteModal({ note, isOpen, onClose, onSave, onDelete }) {
             <FormatButton label={<span className="underline">U</span>}     formatType="underline" title="Underline (Ctrl+U)"  onFormat={handleFormat} />
             <FormatButton label={<span className="line-through">S</span>}  formatType="strike"    title="Strikethrough"       onFormat={handleFormat} />
             <div className="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1 flex-shrink-0" />
+            <FormatButton label={<span className="text-[11px] font-bold">H1</span>} formatType="h1" title="Heading 1 (Ctrl+Shift+H)" onFormat={handleFormat} />
+            <FormatButton label={<span className="text-[11px] font-bold">H2</span>} formatType="h2" title="Heading 2 (Ctrl+Shift+S)" onFormat={handleFormat} />
+            <div className="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1 flex-shrink-0" />
             <button
               type="button"
               onMouseDown={e => { e.preventDefault(); handleFormat('bullet'); }}
               className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition select-none"
-              title="Bullet list"
+              title="Bullet list (Ctrl+Shift+B)"
             >
               <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
@@ -483,7 +532,7 @@ function NoteModal({ note, isOpen, onClose, onSave, onDelete }) {
               type="button"
               onMouseDown={e => { e.preventDefault(); handleFormat('numbered'); }}
               className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition select-none"
-              title="Numbered list"
+              title="Numbered list (Ctrl+Shift+O)"
             >
               <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -495,15 +544,44 @@ function NoteModal({ note, isOpen, onClose, onSave, onDelete }) {
             </span>
           </div>
 
-          <textarea
-            ref={textareaRef}
-            value={form.content}
-            onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
-            placeholder={"Write anything here...\n\nFormatting: **bold**, *italic*, __underline__, ~~strikethrough~~\nLists: - item or 1. item"}
-            rows={9}
-            className="w-full px-3 py-2.5 rounded-b-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none leading-relaxed transition font-mono"
-          />
-          <p className="text-[10px] text-gray-400 mt-1">Ctrl+Enter save · Ctrl+B bold · Ctrl+I italic · Ctrl+U underline</p>
+          {/* Write / Preview tab toggle */}
+          <div className="flex border-x border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+            <button
+              type="button"
+              onClick={() => { setPreviewMode(false); requestAnimationFrame(() => textareaRef.current?.focus()); }}
+              className={cn('flex-1 text-xs py-1.5 font-medium transition', !previewMode ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60')}
+            >
+              Write
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreviewMode(true)}
+              className={cn('flex-1 text-xs py-1.5 font-medium transition', previewMode ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60')}
+            >
+              Preview
+            </button>
+          </div>
+
+          {previewMode ? (
+            <div
+              className="w-full min-h-[216px] px-3 py-2.5 rounded-b-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white prose prose-sm max-w-none
+                [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1 [&_li]:my-0
+                [&_strong]:font-bold [&_em]:italic [&_u]:underline [&_s]:line-through
+                [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mt-2 [&_h1]:mb-0.5 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-2 [&_h2]:mb-0.5
+                [&_hr]:my-2 [&_hr]:border-gray-300 dark:[&_hr]:border-gray-600"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(form.content) || '<span class="text-gray-400 dark:text-gray-600">Nothing to preview.</span>' }}
+            />
+          ) : (
+            <textarea
+              ref={textareaRef}
+              value={form.content}
+              onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+              placeholder={"Write anything here...\n\nFormatting: **bold**, *italic*, __underline__, ~~strikethrough~~\n# Heading · ## Subheading · --- horizontal rule\nLists: - item or 1. item"}
+              rows={9}
+              className="w-full px-3 py-2.5 rounded-b-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none leading-relaxed transition font-mono"
+            />
+          )}
+          <p className="text-[10px] text-gray-400 mt-1">Ctrl+Enter save · Ctrl+B bold · Ctrl+I italic · Ctrl+U underline · Ctrl+Shift+B bullets · Ctrl+Shift+O numbered</p>
         </div>
 
         <div>

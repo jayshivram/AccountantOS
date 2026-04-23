@@ -61,6 +61,10 @@ function reducer(state, action) {
       return { ...state, clients: state.clients.map(c => c.id === action.payload.id ? action.payload : c) };
     case 'TOGGLE_CLIENT_HIDDEN':
       return { ...state, clients: state.clients.map(c => c.id === action.payload ? { ...c, hidden: !c.hidden } : c) };
+    case 'HIDE_CLIENTS':
+      return { ...state, clients: state.clients.map(c => action.payload.includes(c.id) ? { ...c, hidden: true } : c) };
+    case 'UNHIDE_CLIENTS':
+      return { ...state, clients: state.clients.map(c => action.payload.includes(c.id) ? { ...c, hidden: false } : c) };
     case 'DELETE_CLIENT':
       return {
         ...state,

@@ -211,7 +211,7 @@ export default function FocusMode({ onNavigate }) {
         // WHT is on-demand: only show if actual records exist for this period
         const total = d.type === 'WHT'
           ? state.taxReturns.filter(tr => tr.taxType === 'WHT' && tr.period === d.period).length
-          : state.clients.filter(c => c.taxTypes && c.taxTypes.includes(d.type)).length;
+          : state.clients.filter(c => !c.hidden && c.taxTypes && c.taxTypes.includes(d.type)).length;
         if (total === 0) return false;
         // For overdue entries, also hide if every client is already done
         if (d.daysRemaining < 0) {

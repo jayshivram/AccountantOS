@@ -86,36 +86,49 @@ const TYPE_COLUMNS = {
 
 // ─── Main Export Page ─────────────────────────────────────────────────────────
 
+// Quarter-end months (0-indexed): March=2, June=5, September=8, December=11
+const QUARTER_END_MONTHS = [2, 5, 8, 11];
+
 export default function ExportPage() {
   const { state } = useApp();
-  const clients = state.clients;
+  // Hidden clients never appear in export
+  const clients = useMemo(() => (state.clients || []).filter(c => !c.hidden), [state.clients]);
 
   const now = new Date();
   const [year,  setYear]       = useState(now.getFullYear());
   const [month, setMonth]      = useState(now.getMonth()); // 0-indexed
   const [filterType, setFilterType] = useState('ALL');
-  const [showHidden, setShowHidden] = useState(false);
-
-  const hiddenCount = useMemo(() => clients.filter(c => c.hidden).length, [clients]);
 
   // Derived period strings
   const monthPeriod   = `${year}-${String(month).padStart(2, '0')}`;
   const quarter       = monthToQuarter(month); // 1–4
   const quarterPeriod = `${year}-Q${quarter}`;
   const quarterLabel  = `Q${quarter} ${year}`;
+  const annualPeriod  = String(year);
+
+  // Whether the current month is a quarter-end month
+  const isQuarterEndMonth = QUARTER_END_MONTHS.includes(month);
 
   // ── Build flat rows (one per client × taxType) ────────────────────────────
   const rows = useMemo(() => {
     const result = [];
     for (const client of clients) {
-      if (!showHidden && client.hidden) continue;
       for (const taxType of TAX_TYPE_KEYS) {
         if (!client.taxTypes.includes(taxType)) continue;
         if (filterType !== 'ALL' && taxType !== filterType) continue;
 
-        const isQuarterly   = taxType === 'PROVISIONAL' || taxType === 'CITY_LEVY';
-        const period        = isQuarterly ? quarterPeriod : monthPeriod;
-        const periodLabel   = isQuarterly ? quarterLabel  : `${MONTH_NAMES[month]} ${year}`;
+        const isAnnual    = taxType === 'ROI';
+        const isQuarterly = taxType === 'PROVISIONAL' || taxType === 'CITY_LEVY';
+
+        // Quarterly types only appear in quarter-end months
+        if (isQuarterly && !isQuarterEndMonth) continue;
+
+        const period      = isAnnual    ? annualPeriod
+                          : isQuarterly ? quarterPeriod
+                          : monthPeriod;
+        const periodLabel = isAnnual    ? `${year} (Annual)`
+                          : isQuarterly ? quarterLabel
+                          : `${MONTH_NAMES[month]} ${year}`;
 
         const rec = state.taxReturns.find(
           tr => tr.clientId === client.id && tr.taxType === taxType && tr.period === period
@@ -128,6 +141,7 @@ export default function ExportPage() {
           period,
           periodLabel,
           isQuarterly,
+          isAnnual,
           status:           rec?.status           ?? 'pending',
           returnSubmitted:  rec?.returnSubmitted   ?? null,
           screenshotTaken:  rec?.screenshotTaken   ?? null,
@@ -143,7 +157,7 @@ export default function ExportPage() {
       }
     }
     return result;
-  }, [clients, state.taxReturns, monthPeriod, quarterPeriod, filterType, month, quarter, year]);
+  }, [clients, state.taxReturns, monthPeriod, quarterPeriod, annualPeriod, filterType, month, quarter, year, isQuarterEndMonth]);
 
   // ── Sort + add grouping metadata ──────────────────────────────────────────
   const displayRows = useMemo(() => {
@@ -165,7 +179,7 @@ export default function ExportPage() {
   const provPivotRows = useMemo(() => {
     if (filterType !== 'PROVISIONAL') return [];
     return clients
-      .filter(c => (!(!showHidden && c.hidden)) && c.taxTypes.includes('PROVISIONAL'))
+      .filter(c => c.taxTypes.includes('PROVISIONAL'))
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(client => {
         const q = [1,2,3,4].map(n =>
@@ -182,7 +196,7 @@ export default function ExportPage() {
           raaa:         q.find(r => r?.returnDownloaded)?.returnDownloaded ?? null,
         };
       });
-  }, [filterType, clients, state.taxReturns, year, showHidden]);
+  }, [filterType, clients, state.taxReturns, year]);
 
   // ── Summary counts ────────────────────────────────────────────────────────
   const total      = rows.length;
@@ -190,6 +204,12 @@ export default function ExportPage() {
   const inProgress = rows.filter(r => r.status === 'in_progress').length;
   const pending    = rows.filter(r => r.status === 'pending').length;
   const hasQuarterly = rows.some(r => r.isQuarterly);
+
+  // Show notice when the selected filter is quarterly-only but we're not in a quarter-end month
+  const showQuarterlyNotice = !isQuarterEndMonth && (
+    filterType === 'PROVISIONAL' || filterType === 'CITY_LEVY' ||
+    (filterType === 'ALL' && clients.some(c => c.taxTypes.includes('PROVISIONAL') || c.taxTypes.includes('CITY_LEVY')))
+  );
 
   // ── Month navigation ──────────────────────────────────────────────────────
   function prevMonth() {
@@ -428,28 +448,22 @@ export default function ExportPage() {
               {TAX_TYPES[t]}
             </button>
           ))}
-          {hiddenCount > 0 && (
-            <button
-              onClick={() => setShowHidden(v => !v)}
-              className={cn(
-                'text-xs px-3 py-1 rounded-full font-semibold border transition-all ml-auto flex items-center gap-1.5',
-                showHidden
-                  ? 'bg-indigo-600 border-indigo-500 text-white'
-                  : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-400 dark:hover:border-indigo-600 hover:text-indigo-600 dark:hover:text-indigo-400'
-              )}
-              title={showHidden ? 'Click to exclude hidden clients from report' : `Click to include ${hiddenCount} hidden client${hiddenCount !== 1 ? 's' : ''} in report`}
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                {showHidden
-                  ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                }
-              </svg>
-              {showHidden ? `Hide hidden (${hiddenCount})` : `Show hidden (${hiddenCount})`}
-            </button>
-          )}
         </div>
       </div>
+
+      {/* Quarterly-only notice banner */}
+      {showQuarterlyNotice && (
+        <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50">
+          <svg className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            <span className="font-semibold">Provisional Tax &amp; City Levy</span> are only due in{' '}
+            <span className="font-semibold">March, June, September, and December.</span>{' '}
+            Those rows are hidden for {MONTH_NAMES[month]}.
+          </p>
+        </div>
+      )}
 
       {/* Summary stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

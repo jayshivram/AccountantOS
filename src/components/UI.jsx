@@ -181,10 +181,45 @@ export function EmptyState({ icon = '📭', title, message, action }) {
 
 // ─── ConfirmDialog ────────────────────────────────────────────────────────────
 
-export function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, confirmLabel = 'Delete', danger = true }) {
+export function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, confirmLabel = 'Delete', danger = true, comparison }) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
-      <p className="text-gray-600 dark:text-gray-300 mb-6">{message}</p>
+      {comparison ? (
+        <div className="mb-5">
+          {message && <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">{message}</p>}
+          <div className="flex items-center justify-center gap-3 py-3.5 px-4 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
+            {/* FROM chip */}
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-sm font-mono font-semibold text-gray-700 dark:text-gray-300 shadow-sm">
+              <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {comparison.from}
+            </span>
+            {/* Arrow */}
+            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+            </svg>
+            {/* TO chip */}
+            {comparison.to != null ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 text-sm font-mono font-semibold text-blue-700 dark:text-blue-300 shadow-sm">
+                <svg className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {comparison.to}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-700 text-sm font-semibold text-red-600 dark:text-red-400">
+                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Clear
+              </span>
+            )}
+          </div>
+        </div>
+      ) : (
+        <p className="text-gray-600 dark:text-gray-300 mb-6">{message}</p>
+      )}
       <div className="flex gap-3 justify-end">
         <button onClick={onClose} className="btn-secondary">Cancel</button>
         <button

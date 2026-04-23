@@ -446,7 +446,7 @@ export function sendNotification(title, body) {
 
 /** Non-hook: returns { total, completed } client counts for a deadline (safe inside useMemo). */
 export function getClientCountForDeadline(state, type, period) {
-  const total = state.clients.filter(c => c.taxTypes.includes(type)).length;
+  const total = state.clients.filter(c => !c.hidden && c.taxTypes.includes(type)).length;
   const completed = state.taxReturns.filter(
     tr => tr.taxType === type && tr.period === period && tr.status === 'completed'
   ).length;

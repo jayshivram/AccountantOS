@@ -229,7 +229,7 @@ export default function Calendar() {
           date={selectedDay}
           deadlines={getDeadlinesForDate(selectedDay)}
           tasks={state.tasks.filter(t => t.dueDate && t.dueDate.slice(0, 10) === format(selectedDay, 'yyyy-MM-dd'))}
-          clients={state.clients}
+          clients={state.clients.filter(c => !c.hidden)}
           isOpen={modalOpen}
           onClose={() => setModalOpen(false)}
         />

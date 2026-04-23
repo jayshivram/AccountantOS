@@ -63,13 +63,17 @@ function TodayTasksWidget({ onNavigate }) {
   const { state, dispatch } = useApp();
   const today = new Date().toLocaleDateString('en-CA');  // local YYYY-MM-DD
 
+  const hiddenClientIds = useMemo(() => new Set(
+    state.clients.filter(c => c.hidden).map(c => c.id)
+  ), [state.clients]);
+
   const todayTasks = useMemo(() =>
-    state.tasks.filter(t => t.dueDate && t.dueDate.slice(0, 10) === today && t.status !== 'completed')
-  , [state.tasks, today]);
+    state.tasks.filter(t => t.dueDate && t.dueDate.slice(0, 10) === today && t.status !== 'completed' && !hiddenClientIds.has(t.clientId))
+  , [state.tasks, today, hiddenClientIds]);
 
   const overdueTasks = useMemo(() =>
-    state.tasks.filter(t => t.dueDate && t.dueDate.slice(0, 10) < today && t.status !== 'completed')
-  , [state.tasks, today]);
+    state.tasks.filter(t => t.dueDate && t.dueDate.slice(0, 10) < today && t.status !== 'completed' && !hiddenClientIds.has(t.clientId))
+  , [state.tasks, today, hiddenClientIds]);
 
   function completeTask(id) {
     dispatch({ type: 'COMPLETE_TASK', payload: id });
@@ -156,7 +160,7 @@ function QuickStats() {
         // WHT is on-demand: only show if at least one actual WHT record exists for this period
         return state.taxReturns.some(tr => tr.taxType === 'WHT' && tr.period === d.period);
       }
-      return state.clients.some(c => c.taxTypes.includes(d.type));
+      return state.clients.some(c => !c.hidden && c.taxTypes.includes(d.type));
     });
   }, [state.clients, state.taxReturns]);
 
@@ -169,7 +173,7 @@ function QuickStats() {
     if (d.daysRemaining >= 0) return false;
     const total = d.type === 'WHT'
       ? state.taxReturns.filter(tr => tr.taxType === 'WHT' && tr.period === d.period).length
-      : state.clients.filter(c => c.taxTypes.includes(d.type)).length;
+      : state.clients.filter(c => !c.hidden && c.taxTypes.includes(d.type)).length;
     const completed = state.taxReturns.filter(
       tr => tr.taxType === d.type && tr.period === d.period && tr.status === 'completed'
     ).length;
@@ -213,9 +217,9 @@ function ClientHeatmap({ deadlines }) {
   // WHT is on-demand: relevantClients = those with actual records, not just registered
   const relevantClients = activeDeadline.type === 'WHT'
     ? state.clients.filter(c =>
-        state.taxReturns.some(tr => tr.clientId === c.id && tr.taxType === 'WHT' && tr.period === activeDeadline.period)
+        !c.hidden && state.taxReturns.some(tr => tr.clientId === c.id && tr.taxType === 'WHT' && tr.period === activeDeadline.period)
       )
-    : state.clients.filter(c => c.taxTypes.includes(activeDeadline.type));
+    : state.clients.filter(c => !c.hidden && c.taxTypes.includes(activeDeadline.type));
   const completedSet = new Set(
     state.taxReturns
       .filter(tr => tr.taxType === activeDeadline.type && tr.period === activeDeadline.period && tr.status === 'completed')
@@ -248,14 +252,12 @@ function ClientHeatmap({ deadlines }) {
                 key={c.id}
                 className={cn(
                   'px-3 py-2 rounded-lg text-xs font-medium border transition-all',
-                  c.hidden
-                    ? 'opacity-40 bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500'
-                    : done
+                  done
                     ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700/50 text-green-700 dark:text-green-300'
                     : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400'
                 )}
               >
-                <span className="mr-1">{c.hidden ? '🙈' : done ? '✓' : '○'}</span>
+                <span className="mr-1">{done ? '✓' : '○'}</span>
                 {c.name}
               </div>
             );
@@ -312,7 +314,7 @@ export default function Dashboard({ onNavigate }) {
       if (d.type === 'WHT') {
         return state.taxReturns.some(tr => tr.taxType === 'WHT' && tr.period === d.period);
       }
-      return state.clients.some(c => c.taxTypes.includes(d.type));
+      return state.clients.some(c => !c.hidden && c.taxTypes.includes(d.type));
     });
   }, [state.clients, state.taxReturns]);
 
@@ -325,7 +327,7 @@ export default function Dashboard({ onNavigate }) {
     if (d.daysRemaining >= 0) return false;
     const total = d.type === 'WHT'
       ? state.taxReturns.filter(tr => tr.taxType === 'WHT' && tr.period === d.period).length
-      : state.clients.filter(c => c.taxTypes.includes(d.type)).length;
+      : state.clients.filter(c => !c.hidden && c.taxTypes.includes(d.type)).length;
     if (total === 0) return false;
     const completed = state.taxReturns.filter(
       tr => tr.taxType === d.type && tr.period === d.period && tr.status === 'completed'

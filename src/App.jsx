@@ -621,6 +621,11 @@ function SettingsModal({ isOpen, onClose, onLogout, userEmail }) {
 
         <hr className="border-gray-200 dark:border-gray-800" />
 
+        {/* Hidden Clients */}
+        <HiddenClientsSection userEmail={userEmail} />
+
+        <hr className="border-gray-200 dark:border-gray-800" />
+
         {/* Signed-in user + logout */}
         <div className="space-y-2">
           <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/60 rounded-xl">
@@ -641,6 +646,134 @@ function SettingsModal({ isOpen, onClose, onLogout, userEmail }) {
         </div>
       </div>
     </Modal>
+  );
+}
+
+// ─── Hidden Clients Section ───────────────────────────────────────────────────
+
+function HiddenClientsSection({ userEmail }) {
+  const { state, dispatch } = useApp();
+  const hiddenClients = (state.clients || []).filter(c => c.hidden);
+
+  // step: 'locked' | 'password' | 'list'
+  const [step,     setStep]     = useState('locked');
+  const [password, setPassword] = useState('');
+  const [pwError,  setPwError]  = useState('');
+  const [verifying,setVerifying]= useState(false);
+  const [selected, setSelected] = useState(new Set());
+
+  function reset() { setStep('locked'); setPassword(''); setPwError(''); setSelected(new Set()); }
+
+  async function handleVerify(e) {
+    e.preventDefault();
+    if (!password) return;
+    setVerifying(true); setPwError('');
+    const { error } = await supabase.auth.signInWithPassword({ email: userEmail, password });
+    setVerifying(false);
+    if (error) {
+      setPwError('Incorrect password. Please try again.');
+    } else {
+      setPassword('');
+      setStep('list');
+      setSelected(new Set(hiddenClients.map(c => c.id)));
+    }
+  }
+
+  function toggleSelect(id) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function handleUnhide() {
+    if (selected.size === 0) return;
+    dispatch({ type: 'UNHIDE_CLIENTS', payload: [...selected] });
+    reset();
+  }
+
+  return (
+    <div>
+      <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Hidden Clients</p>
+
+      {hiddenClients.length === 0 ? (
+        <p className="text-xs text-gray-400 dark:text-gray-600">No hidden clients.</p>
+      ) : step === 'locked' ? (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {hiddenClients.length} client{hiddenClients.length !== 1 ? 's' : ''} hidden
+          </p>
+          <button
+            onClick={() => setStep('password')}
+            className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:border-blue-400 dark:hover:border-blue-600 hover:text-blue-600 dark:hover:text-blue-400 transition flex items-center gap-1.5"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            Manage ({hiddenClients.length})
+          </button>
+        </div>
+      ) : step === 'password' ? (
+        <form onSubmit={handleVerify} className="space-y-2">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Enter your password to view hidden clients:</p>
+          <input
+            type="password"
+            value={password}
+            onChange={e => { setPassword(e.target.value); setPwError(''); }}
+            placeholder="Your login password"
+            autoFocus
+            className="w-full px-3 py-2 text-sm rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+          />
+          {pwError && <p className="text-xs text-red-500 dark:text-red-400">{pwError}</p>}
+          <div className="flex gap-2">
+            <button type="button" onClick={reset} className="flex-1 text-xs py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition">Cancel</button>
+            <button
+              type="submit"
+              disabled={verifying || !password}
+              className="flex-1 text-xs py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50 transition"
+            >
+              {verifying ? 'Verifying…' : 'Verify'}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Select clients to unhide:</p>
+            <button
+              onClick={() => setSelected(prev => prev.size === hiddenClients.length ? new Set() : new Set(hiddenClients.map(c => c.id)))}
+              className="text-[11px] text-blue-500 hover:underline"
+            >
+              {selected.size === hiddenClients.length ? 'Deselect all' : 'Select all'}
+            </button>
+          </div>
+          <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+            {hiddenClients.map(c => (
+              <label key={c.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer transition">
+                <input
+                  type="checkbox"
+                  checked={selected.has(c.id)}
+                  onChange={() => toggleSelect(c.id)}
+                  className="w-3.5 h-3.5 rounded accent-blue-600"
+                />
+                <span className="text-xs text-gray-700 dark:text-gray-300 truncate">{c.name}</span>
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={reset} className="flex-1 text-xs py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition">Cancel</button>
+            <button
+              onClick={handleUnhide}
+              disabled={selected.size === 0}
+              className="flex-1 text-xs py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold disabled:opacity-50 transition"
+            >
+              Unhide {selected.size > 0 ? `(${selected.size})` : ''}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -407,7 +407,7 @@ export default function Cancellations() {
       <NewCancellationModal
         isOpen={newModalOpen}
         onClose={() => setNewModalOpen(false)}
-        clients={state.clients}
+        clients={state.clients.filter(c => !c.hidden)}
         currentUserEmail={userEmail}
       />
     </div>
