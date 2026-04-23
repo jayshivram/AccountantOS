@@ -40,7 +40,7 @@ function buildSystemPrompt(state) {
     const dd = dueDate(r.taxType, r.period);
     const diff = dd ? Math.round((new Date(dd) - new Date(today)) / 86400000) : null;
     const status = diff === null ? '' : diff < 0 ? ` (OVERDUE by ${Math.abs(diff)}d)` : diff === 0 ? ' (DUE TODAY)' : ` (due in ${diff}d)`;
-    return `  - ${c?.name || r.clientId}: ${r.taxType} ${fmtPeriod(r.period)}${status} [id:${r.id}]`;
+    return `  - ${c?.name || r.clientId}: ${r.taxType} ${fmtPeriod(r.period)}${status}`;
   }).join('\n');
 
   const clientLines = clients.map(c =>
@@ -48,7 +48,7 @@ function buildSystemPrompt(state) {
   ).join('\n');
 
   const taskLines = tasks.map(t =>
-    `  - [${t.priority}] ${t.title}${t.dueDate ? ` (due ${t.dueDate})` : ''} [id:${t.id}]`
+    `  - [${t.priority}] ${t.title}${t.dueDate ? ` (due ${t.dueDate})` : ''}`
   ).join('\n');
 
   // Working hours — summarise all weeks and compute monthly totals
@@ -89,34 +89,10 @@ function buildSystemPrompt(state) {
       return `  ${MO[mo-1]} ${yr}: ${h.toFixed(1)}h`;
     }).join('\n');
 
-  // Filing gaps — clients with a tax type but NO record (pending or completed) for recent periods
-  const RECENT_MONTHS = 3;
-  function recentPeriods(n) {
-    const periods = [];
-    const d = new Date(today);
-    for (let i = 0; i < n; i++) {
-      periods.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
-      d.setMonth(d.getMonth() - 1);
-    }
-    return periods;
-  }
-  const periodicTypes = ['VAT','PAYE','NSSF','WCF','SDL','WHT'];
-  const recentPds = recentPeriods(RECENT_MONTHS);
-  const gapLines = [];
-  for (const client of clients) {
-    for (const tt of (client.taxTypes || [])) {
-      if (!periodicTypes.includes(tt)) continue;
-      for (const period of recentPds) {
-        const hasRecord = returns.some(r => r.clientId === client.id && r.taxType === tt && r.period === period);
-        if (!hasRecord) gapLines.push(`  - ${client.name}: ${tt} ${fmtPeriod(period)} — NO RECORD`);
-      }
-    }
-  }
-
   // Notes summary
   const notes = state.notes || [];
   const noteLines = notes.slice(0, 10).map(n =>
-    `  - ${n.title || '(untitled)'}: ${(n.content||'').slice(0, 80)}${(n.content||'').length > 80 ? '…' : ''} [id:${n.id}]`
+    `  - ${n.title || '(untitled)'}: ${(n.content||'').slice(0, 80)}${(n.content||'').length > 80 ? '…' : ''}`
   ).join('\n');
 
   return `You are Jay's personal AI assistant. You're sharp, direct, and genuinely helpful — not a corporate chatbot. Talk like a real person. Be casual when the conversation is casual, focused when the work needs it.
@@ -145,27 +121,9 @@ ${monthSummary || '  (no hours logged)'}
 NOTES (${notes.length} total, showing first 10):
 ${noteLines || '  (none)'}
 
-FILING GAPS — clients with a tax type but ZERO record (pending or completed) for the last ${RECENT_MONTHS} months:
-${gapLines.length ? gapLines.join('\n') : '  (no gaps detected)'}
-
 Tax due dates: VAT → 20th next month, PAYE/SDL/WHT → 7th, NSSF/WCF → 30th, PROVISIONAL/CITY_LEVY → quarterly, ROI → annual June.
 
-You can read all this data and answer questions about it. You can also take actions directly — create tasks, complete returns, add notes, etc.
-
-ACTIONS — when Jay asks you to create/add/complete/delete/schedule something, include action blocks in your response:
-Format: <action>{"type":"ACTION_TYPE","param":"value"}</action>
-
-Supported actions (use exact IDs from context above):
-- create_task: {"type":"create_task","title":"...","priority":"high|medium|low","dueDate":"YYYY-MM-DD","description":"...","category":"..."}
-- complete_task: {"type":"complete_task","id":"<task id>"}
-- delete_task: {"type":"delete_task","id":"<task id>"}
-- update_task: {"type":"update_task","id":"<task id>","title":"...","priority":"...","dueDate":"..."}
-- create_note: {"type":"create_note","title":"...","content":"...","color":"yellow|blue|green|pink|purple"}
-- delete_note: {"type":"delete_note","id":"<note id>"}
-- complete_return: {"type":"complete_return","id":"<return id>"}
-- reopen_return: {"type":"reopen_return","id":"<return id>"}
-
-Actions show as confirm buttons — Jay approves before they run. You can include multiple actions in one reply. Example: "Done! <action>{"type":"create_task","title":"Call John","priority":"high","dueDate":"2026-04-23"}</action>"`;  
+You can read all this data and answer questions about it. To make changes, Jay uses the app or Telegram bot — but you don't need to remind him of that every time, only when directly relevant.`;
 }
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
@@ -255,86 +213,6 @@ function ModelPill({ models, selected, onChange }) {
   );
 }
 
-// ─── Action helpers ─────────────────────────────────────────────────────────
-function parseActions(text) {
-  const regex = /<action>([\s\S]*?)<\/action>/g;
-  const actions = [];
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    try {
-      const params = JSON.parse(match[1].trim());
-      actions.push({ _id: Math.random().toString(36).slice(2), applied: false, dismissed: false, ...params });
-    } catch { /* skip malformed */ }
-  }
-  const cleanText = text.replace(/<action>[\s\S]*?<\/action>/g, '').replace(/\n{3,}/g, '\n\n').trim();
-  return { cleanText, actions };
-}
-
-function describeAction(a, state) {
-  const clients = state.clients || [];
-  const tasks   = state.tasks   || [];
-  const notes   = state.notes   || [];
-  const returns = state.taxReturns || [];
-  switch (a.type) {
-    case 'create_task':    return `Create task: "${a.title}"${a.dueDate ? ` · due ${a.dueDate}` : ''}${a.priority ? ` · ${a.priority}` : ''}`;
-    case 'complete_task':  { const t = tasks.find(x => x.id === a.id);  return `Complete task: "${t?.title || a.id}"`; }
-    case 'delete_task':    { const t = tasks.find(x => x.id === a.id);  return `Delete task: "${t?.title || a.id}"`; }
-    case 'update_task':    { const t = tasks.find(x => x.id === a.id);  return `Update task: "${t?.title || a.id}"`; }
-    case 'create_note':    return `Create note: "${a.title}"`;
-    case 'delete_note':    { const n = notes.find(x => x.id === a.id);  return `Delete note: "${n?.title || a.id}"`; }
-    case 'complete_return': {
-      const r = returns.find(x => x.id === a.id);
-      const c = clients.find(x => x.id === r?.clientId);
-      return `Complete: ${c?.name || '?'} ${r?.taxType || ''} ${r?.period || ''}`;
-    }
-    case 'reopen_return': {
-      const r = returns.find(x => x.id === a.id);
-      const c = clients.find(x => x.id === r?.clientId);
-      return `Reopen: ${c?.name || '?'} ${r?.taxType || ''} ${r?.period || ''}`;
-    }
-    default: return a.type;
-  }
-}
-
-const ACTION_ICONS = {
-  create_task: '📋', complete_task: '✅', delete_task: '🗑️', update_task: '✏️',
-  create_note: '📝', delete_note: '🗑️', complete_return: '✅', reopen_return: '↩️',
-};
-
-// ─── Action confirm card ──────────────────────────────────────────────────────
-function ActionCard({ action, label, onApply, onDismiss }) {
-  const isDestructive = action.type.startsWith('delete');
-  if (action.applied) {
-    return (
-      <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700/40 text-green-700 dark:text-green-400 text-xs">
-        <span>✓</span><span>{label}</span>
-      </div>
-    );
-  }
-  return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs ${
-      isDestructive
-        ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/40'
-        : 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800/40'
-    }`}>
-      <span>{ACTION_ICONS[action.type] || '⚡'}</span>
-      <span className="flex-1 text-gray-700 dark:text-gray-300">{label}</span>
-      <button
-        onClick={onApply}
-        className={`px-2.5 py-1 rounded-lg font-medium transition ${
-          isDestructive
-            ? 'bg-red-500 hover:bg-red-600 text-white'
-            : 'bg-blue-600 hover:bg-blue-500 text-white'
-        }`}
-      >Apply</button>
-      <button
-        onClick={onDismiss}
-        className="px-2 py-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-      >✕</button>
-    </div>
-  );
-}
-
 // ─── Suggested prompts ────────────────────────────────────────────────────────
 const SUGGESTIONS = [
   "What's overdue right now?",
@@ -347,7 +225,7 @@ const SUGGESTIONS = [
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function AIAssistant() {
-  const { state, dispatch } = useApp();
+  const { state } = useApp();
 
   const [status,   setStatus]   = useState('checking'); // 'checking' | 'online' | 'offline'
   const [models,   setModels]   = useState([]);
@@ -360,59 +238,6 @@ export default function AIAssistant() {
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
   const abortRef  = useRef(null);
-
-  // ── Action execution ──
-  function executeAction(a) {
-    switch (a.type) {
-      case 'create_task':
-        dispatch({ type: 'ADD_TASK', payload: { title: a.title, priority: a.priority || 'medium', dueDate: a.dueDate || null, description: a.description || '', category: a.category || '', clientId: a.clientId || null, status: 'pending' } });
-        break;
-      case 'complete_task':  dispatch({ type: 'COMPLETE_TASK', payload: a.id }); break;
-      case 'delete_task':    dispatch({ type: 'DELETE_TASK',   payload: a.id }); break;
-      case 'update_task': {
-        const t = state.tasks.find(x => x.id === a.id);
-        if (t) dispatch({ type: 'EDIT_TASK', payload: { ...t, ...a, _id: undefined } });
-        break;
-      }
-      case 'create_note':
-        dispatch({ type: 'ADD_NOTE', payload: { title: a.title, content: a.content || '', color: a.color || 'yellow', pinned: false, category: '' } });
-        break;
-      case 'delete_note':  dispatch({ type: 'DELETE_NOTE', payload: a.id }); break;
-      case 'complete_return': {
-        const r = state.taxReturns.find(x => x.id === a.id);
-        if (r) dispatch({ type: 'UPDATE_TAX_RETURN', payload: { ...r, status: 'completed', completedAt: new Date().toISOString() } });
-        break;
-      }
-      case 'reopen_return': {
-        const r = state.taxReturns.find(x => x.id === a.id);
-        if (r) dispatch({ type: 'UPDATE_TAX_RETURN', payload: { ...r, status: 'pending', completedAt: null } });
-        break;
-      }
-      default: break;
-    }
-  }
-
-  function applyAction(msgIdx, actionId) {
-    setMessages(prev => {
-      const updated = [...prev];
-      const msg = { ...updated[msgIdx], actions: [...(updated[msgIdx].actions || [])] };
-      const action = msg.actions.find(a => a._id === actionId);
-      if (action) executeAction(action);
-      msg.actions = msg.actions.map(a => a._id === actionId ? { ...a, applied: true } : a);
-      updated[msgIdx] = msg;
-      return updated;
-    });
-  }
-
-  function dismissAction(msgIdx, actionId) {
-    setMessages(prev => {
-      const updated = [...prev];
-      const msg = { ...updated[msgIdx], actions: [...(updated[msgIdx].actions || [])] };
-      msg.actions = msg.actions.map(a => a._id === actionId ? { ...a, dismissed: true } : a);
-      updated[msgIdx] = msg;
-      return updated;
-    });
-  }
 
   // ── Check LM Studio ──
   const checkConnection = useCallback(async () => {
@@ -511,11 +336,9 @@ export default function AIAssistant() {
         }
       }
 
-      const { cleanText, actions: parsedActions } = parseActions(full);
-      const labelledActions = parsedActions.map(a => ({ ...a, label: describeAction(a, state) }));
       setMessages(prev => {
         const updated = [...prev];
-        updated[updated.length - 1] = { role: 'assistant', content: cleanText, streaming: false, actions: labelledActions };
+        updated[updated.length - 1] = { role: 'assistant', content: full, streaming: false };
         return updated;
       });
     } catch (err) {
@@ -625,21 +448,7 @@ export default function AIAssistant() {
                   </div>
                 </div>
               ) : (
-                messages.map((msg, i) => (
-                  <div key={i} className="space-y-2">
-                    <Bubble msg={msg} />
-                    {msg.actions?.filter(a => !a.dismissed).map(a => (
-                      <div key={a._id} className="ml-10">
-                        <ActionCard
-                          action={a}
-                          label={a.label}
-                          onApply={() => applyAction(i, a._id)}
-                          onDismiss={() => dismissAction(i, a._id)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                ))
+                messages.map((msg, i) => <Bubble key={i} msg={msg} />)
               )}
               <div ref={bottomRef} />
             </div>

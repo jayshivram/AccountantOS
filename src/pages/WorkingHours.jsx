@@ -1,8 +1,8 @@
-﻿import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext.jsx';
 import { cn } from '../utils/index.js';
-
+import { ConfirmDialog } from '../components/UI.jsx';
 // â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const DAYS         = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -435,6 +435,7 @@ export default function WorkingHours() {
   const [week, setWeek] = useState(initWeek);
   const [year, setYear] = useState(initYear);
   const [jumpOpen, setJumpOpen] = useState(false);
+  const [confirmState, setConfirmState] = useState({ isOpen: false, day: null, field: null, value: null, currentValue: null });
 
   const totalWeeks = useMemo(() => isoWeeksInYear(year), [year]);
   const weekKey    = `${year}-W${String(week).padStart(2, '0')}`;
@@ -468,8 +469,20 @@ export default function WorkingHours() {
   }
 
   const handleChange = useCallback((day, field, value) => {
+    const currentValue = weekData[day]?.[field];
+    if (currentValue && currentValue !== value) {
+      setConfirmState({ isOpen: true, day, field, value, currentValue });
+      return;
+    }
     dispatch({ type: 'SET_WORKING_HOURS_ENTRY', payload: { weekKey, day, field, value } });
-  }, [dispatch, weekKey]);
+  }, [dispatch, weekKey, weekData]);
+
+  const confirmChange = () => {
+    const { day, field, value } = confirmState;
+    if (day && field) {
+      dispatch({ type: 'SET_WORKING_HOURS_ENTRY', payload: { weekKey, day, field, value } });
+    }
+  };
 
   const netMinsPerDay = DAYS.map(day => calcNetMins(weekData[day]));
   const totalMins     = netMinsPerDay.reduce((s, m) => s + (m || 0), 0);
@@ -837,6 +850,18 @@ export default function WorkingHours() {
       <p className="text-xs text-center text-gray-400 dark:text-gray-600 lg:hidden">
         Scroll horizontally to see all columns
       </p>
+
+      <ConfirmDialog
+        isOpen={confirmState.isOpen}
+        onClose={() => setConfirmState(s => ({ ...s, isOpen: false }))}
+        onConfirm={confirmChange}
+        title="Confirm Time Change"
+        message={confirmState.value 
+          ? `Are you sure you want to change the time from ${use12h ? to12h(confirmState.currentValue) : confirmState.currentValue} to ${use12h ? to12h(confirmState.value) : confirmState.value}?`
+          : `Are you sure you want to clear the time (currently ${use12h ? to12h(confirmState.currentValue) : confirmState.currentValue})?`}
+        confirmLabel="Confirm"
+        danger={false}
+      />
     </div>
   );
 }
