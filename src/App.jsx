@@ -891,7 +891,7 @@ function Sidebar({ currentView, onNavigate, onSettings, mobileOpen, onMobileClos
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-1">
         {navItems.map(({ key, label, Icon }) => (
           <button
             key={key}

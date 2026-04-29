@@ -132,6 +132,7 @@ function LiveNetTimer({ timeIn, breakStart, breakStop }) {
   if (inM === null) return null;
 
   const onBreak = bsM !== null && beM === null;
+  const breakMins = onBreak && bsM !== null ? nowMins - bsM : 0;
 
   let netMins;
   if (onBreak) {
@@ -162,7 +163,7 @@ function LiveNetTimer({ timeIn, breakStart, breakStop }) {
       </div>
       {onBreak && (
         <span className="text-[9px] font-bold uppercase tracking-widest text-amber-400 dark:text-amber-500 leading-none">
-          On Break
+          On Break{breakMins > 0 ? ` · ${fmtMins(breakMins)}` : ''}
         </span>
       )}
     </div>

@@ -336,6 +336,9 @@ export function BatteryWidget() {
     };
   }, []);
 
+  // Firefox removed Battery API permanently in 2019 — hide widget cleanly
+  if (/Firefox\//.test(navigator.userAgent)) return null;
+
   if (!battery.supported) return (
     <div className="flex items-center gap-1 text-gray-400 dark:text-gray-600" title="Battery level unavailable on this browser">
       <svg className="w-5 h-3" viewBox="0 0 20 12" fill="none" stroke="currentColor" strokeWidth="1.5">
