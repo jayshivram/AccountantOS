@@ -398,15 +398,17 @@ export default function TallyTracker() {
   const allClients = useClients();
   const { state, dispatch } = useApp();
   const currentCalendarYear = new Date().getFullYear();
+  // In April 2026 you're filing 2025 accounts — default to prior FY
+  const defaultYear = currentCalendarYear - 1;
 
-  // Derive available years: current year + any year with enrollments
+  const [year, setYear]               = useState(defaultYear);
+
+  // Derive available years: default FY + active tab (shows immediately on + Year) + enrolled years
   const availableYears = useMemo(() => {
     const enrolledYears = (state.tallyEnrollments || []).map(e => e.year);
-    const set = new Set([currentCalendarYear, ...enrolledYears]);
+    const set = new Set([defaultYear, year, ...enrolledYears]);
     return Array.from(set).sort((a, b) => a - b);
-  }, [state.tallyEnrollments, currentCalendarYear]);
-
-  const [year, setYear]               = useState(currentCalendarYear);
+  }, [state.tallyEnrollments, defaultYear, year]);
   const [search, setSearch]           = useState('');
   const [configureOpen, setConfigureOpen] = useState(false);
   const [filterStatus, setFilterStatus]   = useState('all'); // 'all'|'not_started'|'in_progress'|'completed'
@@ -484,7 +486,7 @@ export default function TallyTracker() {
         {/* Add new year */}
         <button
           onClick={() => {
-            const next = (availableYears[availableYears.length - 1] || currentCalendarYear) + 1;
+            const next = (availableYears[availableYears.length - 1] || defaultYear) + 1;
             setYear(next);
             setConfigureOpen(true);
           }}
@@ -628,4 +630,4 @@ export default function TallyTracker() {
     </div>
   );
 }
-
+
