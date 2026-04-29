@@ -247,9 +247,87 @@ function ConfigureYearModal({ isOpen, onClose, year, clients, existingEnrollment
   );
 }
 
+// ─── Add Ad-Hoc (External) Modal ──────────────────────────────────────────────
+
+function AddAdHocModal({ isOpen, onClose, year, onAdd }) {
+  const [name, setName]   = useState('');
+  const [scope, setScope] = useState('full');
+  const nameRef           = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setName(''); setScope('full');
+    setTimeout(() => nameRef.current?.focus(), 60);
+  }, [isOpen]);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onAdd({ name: trimmed, scope });
+    onClose();
+  }
+
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-sm border border-gray-200 dark:border-gray-700" onClick={e => e.stopPropagation()}>
+        <div className="px-5 pt-5 pb-4">
+          <h2 className="text-base font-bold text-gray-900 dark:text-white mb-1">Add External Entry</h2>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
+            For a colleague's client or a one-off company — tracked in Tally only, not added to your Clients list.
+          </p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Company / Client name</label>
+              <input
+                ref={nameRef}
+                className="input w-full"
+                placeholder="e.g. Colleague's Client Ltd"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">Scope</label>
+              <div className="flex gap-2">
+                {[
+                  { value: 'full',  label: 'Full',  desc: '5 tasks',  color: 'bg-blue-600' },
+                  { value: 'draft', label: 'Draft', desc: '3 tasks',  color: 'bg-violet-600' },
+                ].map(s => (
+                  <button
+                    key={s.value}
+                    type="button"
+                    onClick={() => setScope(s.value)}
+                    className={cn(
+                      'flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all',
+                      scope === s.value
+                        ? `${s.color} border-transparent text-white shadow-sm`
+                        : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'
+                    )}
+                  >
+                    {s.label} <span className="font-normal opacity-70 text-xs">({s.desc})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={onClose} className="btn-secondary flex-1 py-2 text-sm">Cancel</button>
+              <button type="submit" disabled={!name.trim()} className="btn-primary flex-1 py-2 text-sm disabled:opacity-50">
+                Add to {year}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Client Tally Card ─────────────────────────────────────────────────────────
 
-function ClientTallyCard({ client, year, scope }) {
+function ClientTallyCard({ client, year, scope, isAdHoc = false, onDeleteAdHoc }) {
   const { dispatch } = useApp();
   const rec   = useTallyRecord(client.id, year);
   const tasks = tasksForScope(scope);
@@ -289,6 +367,11 @@ function ClientTallyCard({ client, year, scope }) {
             )}>
               {scope === 'draft' ? 'Draft' : 'Full'}
             </span>
+            {isAdHoc && (
+              <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-700/40">
+                Ext
+              </span>
+            )}
           </div>
           <StatusPill status={status} />
         </div>
@@ -352,6 +435,17 @@ function ClientTallyCard({ client, year, scope }) {
               </div>
             );
           })}
+          {isAdHoc && onDeleteAdHoc && (
+            <div className="pt-2 border-t border-gray-100 dark:border-gray-700 mt-1">
+              <button
+                onClick={e => { e.stopPropagation(); if (window.confirm(`Remove "${client.name}" from this year's tally?`)) onDeleteAdHoc(); }}
+                className="text-xs text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-400 transition-colors flex items-center gap-1"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                Remove external entry
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -403,6 +497,9 @@ export default function TallyTracker() {
 
   const [year, setYear]               = useState(defaultYear);
 
+  // Only non-hidden clients appear in Configure modal and card grid
+  const activeClients = useMemo(() => allClients.filter(c => !c.hidden), [allClients]);
+
   // Derive available years: default FY + active tab (shows immediately on + Year) + enrolled years
   const availableYears = useMemo(() => {
     const enrolledYears = (state.tallyEnrollments || []).map(e => e.year);
@@ -411,6 +508,7 @@ export default function TallyTracker() {
   }, [state.tallyEnrollments, defaultYear, year]);
   const [search, setSearch]           = useState('');
   const [configureOpen, setConfigureOpen] = useState(false);
+  const [adHocOpen, setAdHocOpen]         = useState(false);
   const [filterStatus, setFilterStatus]   = useState('all'); // 'all'|'not_started'|'in_progress'|'completed'
 
   // Enrollments for the active year
@@ -419,11 +517,17 @@ export default function TallyTracker() {
     [state.tallyEnrollments, year]
   );
 
-  // Visible client cards — apply search + status filter
+  // Ad-hoc external entries for the active year
+  const yearAdHoc = useMemo(
+    () => (state.tallyAdHoc || []).filter(a => a.year === year),
+    [state.tallyAdHoc, year]
+  );
+
+  // Visible client cards — exclude hidden clients, apply search + status filter
   const visibleCards = useMemo(() => {
     return yearEnrollments
       .map(e => ({ enrollment: e, client: allClients.find(c => c.id === e.clientId) }))
-      .filter(({ client }) => !!client)
+      .filter(({ client }) => !!client && !client.hidden)
       .filter(({ client }) => !search || client.name.toLowerCase().includes(search.toLowerCase()))
       .filter(({ enrollment, client }) => {
         if (filterStatus === 'all') return true;
@@ -433,22 +537,51 @@ export default function TallyTracker() {
       });
   }, [yearEnrollments, allClients, search, filterStatus, state.tallyProgress, year]);
 
+  // Visible ad-hoc cards — apply search + status filter
+  const visibleAdHoc = useMemo(() => {
+    return yearAdHoc
+      .filter(a => !search || a.name.toLowerCase().includes(search.toLowerCase()))
+      .filter(a => {
+        if (filterStatus === 'all') return true;
+        const rec   = state.tallyProgress.find(tp => tp.clientId === a.id && tp.year === year);
+        const tasks = tasksForScope(a.scope);
+        return getStatus(rec, tasks) === filterStatus;
+      });
+  }, [yearAdHoc, search, filterStatus, state.tallyProgress, year]);
+
   function handleSaveEnrollments(enrollments) {
     dispatch({ type: 'SET_YEAR_ENROLLMENTS', payload: { year, enrollments } });
   }
 
-  // Counts for filter tabs
+  function handleAddAdHoc({ name, scope }) {
+    dispatch({ type: 'ADD_TALLY_ADHOC', payload: { name, scope, year } });
+  }
+
+  function handleDeleteAdHoc(id) {
+    dispatch({ type: 'DELETE_TALLY_ADHOC', payload: id });
+  }
+
+  // Counts for filter tabs — includes both enrolled and ad-hoc
   const filterCounts = useMemo(() => {
-    const counts = { all: yearEnrollments.length, not_started: 0, in_progress: 0, completed: 0 };
+    const total = yearEnrollments.filter(e => {
+      const c = allClients.find(cl => cl.id === e.clientId);
+      return c && !c.hidden;
+    }).length + yearAdHoc.length;
+    const counts = { all: total, not_started: 0, in_progress: 0, completed: 0 };
     yearEnrollments.forEach(e => {
       const client = allClients.find(c => c.id === e.clientId);
-      if (!client) return;
+      if (!client || client.hidden) return;
       const rec   = state.tallyProgress.find(tp => tp.clientId === client.id && tp.year === year);
       const tasks = tasksForScope(e.scope);
       counts[getStatus(rec, tasks)]++;
     });
+    yearAdHoc.forEach(a => {
+      const rec   = state.tallyProgress.find(tp => tp.clientId === a.id && tp.year === year);
+      const tasks = tasksForScope(a.scope);
+      counts[getStatus(rec, tasks)]++;
+    });
     return counts;
-  }, [yearEnrollments, allClients, state.tallyProgress, year]);
+  }, [yearEnrollments, yearAdHoc, allClients, state.tallyProgress, year]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -497,6 +630,16 @@ export default function TallyTracker() {
         </button>
 
         <div className="flex items-center gap-2 ml-auto">
+          {/* + External button */}
+          <button
+            onClick={() => setAdHocOpen(true)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border border-dashed border-orange-300 dark:border-orange-700/50 text-orange-500 dark:text-orange-400 hover:border-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/10 transition-all"
+            title="Add a colleague or external/one-off company"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
+            + External
+          </button>
+
           {/* Configure button */}
           <button
             onClick={() => setConfigureOpen(true)}
@@ -513,7 +656,7 @@ export default function TallyTracker() {
           </button>
 
           {/* Search */}
-          {yearEnrollments.length > 0 && (
+          {(yearEnrollments.length > 0 || yearAdHoc.length > 0) && (
             <div className="relative">
               <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -529,7 +672,7 @@ export default function TallyTracker() {
         </div>
       </div>
 
-      {yearEnrollments.length === 0 ? (
+      {yearEnrollments.length === 0 && yearAdHoc.length === 0 ? (
         /* ── Empty state: year not configured ── */
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <div className="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-4">
@@ -552,7 +695,7 @@ export default function TallyTracker() {
       ) : (
         <>
           {/* Summary */}
-          <YearSummary enrollments={yearEnrollments} year={year} />
+          <YearSummary enrollments={[...yearEnrollments, ...yearAdHoc.map(a => ({ clientId: a.id, scope: a.scope }))]} year={year} />
 
           {/* Status filter tabs */}
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -597,7 +740,7 @@ export default function TallyTracker() {
           </div>
 
           {/* Client Grid */}
-          {visibleCards.length === 0 ? (
+          {visibleCards.length === 0 && visibleAdHoc.length === 0 ? (
             <EmptyState icon="🔍" title="No clients match" message="Try a different search or filter." />
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -607,6 +750,16 @@ export default function TallyTracker() {
                   client={client}
                   year={year}
                   scope={enrollment.scope}
+                />
+              ))}
+              {visibleAdHoc.map(a => (
+                <ClientTallyCard
+                  key={`adhoc-${a.id}-${year}`}
+                  client={{ id: a.id, name: a.name }}
+                  year={year}
+                  scope={a.scope}
+                  isAdHoc
+                  onDeleteAdHoc={() => handleDeleteAdHoc(a.id)}
                 />
               ))}
             </div>
@@ -623,9 +776,17 @@ export default function TallyTracker() {
         isOpen={configureOpen}
         onClose={() => setConfigureOpen(false)}
         year={year}
-        clients={allClients}
+        clients={activeClients}
         existingEnrollments={yearEnrollments}
         onSave={handleSaveEnrollments}
+      />
+
+      {/* Add External Modal */}
+      <AddAdHocModal
+        isOpen={adHocOpen}
+        onClose={() => setAdHocOpen(false)}
+        year={year}
+        onAdd={handleAddAdHoc}
       />
     </div>
   );

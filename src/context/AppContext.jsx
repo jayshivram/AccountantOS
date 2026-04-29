@@ -12,6 +12,7 @@ function getInitialState() {
       ...saved,
       tallyProgress:     saved.tallyProgress     || [],
       tallyEnrollments:  saved.tallyEnrollments   || [],
+      tallyAdHoc:        saved.tallyAdHoc          || [],
       cancellations:     saved.cancellations      || [],
       notes:             saved.notes              || [],
       pastebins:         saved.pastebins          || [],
@@ -27,6 +28,7 @@ function getInitialState() {
     tasks:             INITIAL_TASKS,
     tallyProgress:     [],
     tallyEnrollments:  [],
+    tallyAdHoc:        [],
     cancellations:     [],
     notes:             [],
     pastebins:         [],
@@ -166,7 +168,7 @@ function reducer(state, action) {
     case 'IMPORT_DATA': {
       const { currentView, currentMonth, cancellations: _c, ...rest } = action.payload;
       // Never overwrite cancellations with a personal backup; they're managed separately.
-      return { ...state, ...rest, tallyProgress: rest.tallyProgress || [], tallyEnrollments: rest.tallyEnrollments || [], notes: rest.notes || [], pastebins: rest.pastebins || [] };
+      return { ...state, ...rest, tallyProgress: rest.tallyProgress || [], tallyEnrollments: rest.tallyEnrollments || [], tallyAdHoc: rest.tallyAdHoc || [], notes: rest.notes || [], pastebins: rest.pastebins || [] };
     }
 
     // ── Tally Progress ──
@@ -192,6 +194,16 @@ function reducer(state, action) {
       const added = enrollments.map(e => ({ id: uuid(), ...e, year }));
       return { ...state, tallyEnrollments: [...kept, ...added] };
     }
+
+    // ── Tally Ad-Hoc (external/colleague entries, not in Clients list) ──
+    case 'ADD_TALLY_ADHOC':
+      return { ...state, tallyAdHoc: [...(state.tallyAdHoc || []), { id: uuid(), ...action.payload }] };
+    case 'DELETE_TALLY_ADHOC':
+      return {
+        ...state,
+        tallyAdHoc:    (state.tallyAdHoc || []).filter(a => a.id !== action.payload),
+        tallyProgress: state.tallyProgress.filter(tp => tp.clientId !== action.payload),
+      };
 
     // ── Cancellations (team-shared, synced to team_cancellations table) ──
     case 'ADD_CANCELLATION': {
