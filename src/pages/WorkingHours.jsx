@@ -147,25 +147,29 @@ function LiveNetTimer({ timeIn, breakStart, breakStop }) {
 
   if (netMins <= 0) return null;
 
-  return (
-    <div className="flex flex-col items-end gap-0.5 mt-0.5">
-      <div className={cn(
-        'flex items-center gap-1 text-xs font-semibold tabular-nums',
-        onBreak ? 'text-amber-500 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
-      )}>
-        <span className={cn(
-          'w-1.5 h-1.5 rounded-full flex-shrink-0',
-          onBreak
-            ? 'bg-amber-400'
-            : 'bg-emerald-500 animate-pulse'
-        )} />
-        {fmtMins(netMins)}
-      </div>
-      {onBreak && (
-        <span className="text-[9px] font-bold uppercase tracking-widest text-amber-400 dark:text-amber-500 leading-none">
-          On Break{breakMins > 0 ? ` · ${fmtMins(breakMins)}` : ''}
+  if (onBreak) {
+    return (
+      <div className="flex items-center gap-1 mt-0.5">
+        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 text-xs font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+          <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {fmtMins(netMins)}
         </span>
-      )}
+        <span className="text-gray-300 dark:text-gray-700 text-xs select-none">·</span>
+        <span className="px-1.5 py-0.5 rounded-md bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700/40 text-xs font-semibold tabular-nums text-orange-500 dark:text-orange-400">
+          ☕ {breakMins > 0 ? fmtMins(breakMins) : '…'}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1 mt-0.5">
+      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
+      <span className="text-xs font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+        {fmtMins(netMins)}
+      </span>
     </div>
   );
 }
