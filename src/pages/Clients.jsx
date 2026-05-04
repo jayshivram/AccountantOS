@@ -6,7 +6,7 @@ import {
 import {
   Modal, ConfirmDialog, TaxTypeBadge, EmptyState, ClickToCopy
 } from '../components/UI.jsx';
-// â”€â”€â”€ Client Form â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Client Form --------------------------------------------------------------
 
 function ClientForm({ initial, isOpen, onClose, onSave }) {
   const [name, setName] = useState(initial?.name || '');
@@ -117,7 +117,7 @@ function ClientForm({ initial, isOpen, onClose, onSave }) {
   );
 }
 
-// â”€â”€â”€ Client Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Client Row ---------------------------------------------------------------
 
 function ClientRow({ client, onEdit, onDelete, onHide }) {
   const { state } = useApp();
@@ -149,9 +149,9 @@ function ClientRow({ client, onEdit, onDelete, onHide }) {
           </div>
 
           <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-500 flex-wrap">
-            <span className="whitespace-nowrap">âœ“ {completedReturns} submissions</span>
+            <span className="whitespace-nowrap">✓ {completedReturns} submissions</span>
             {client.tallyYears.length > 0 && (
-              <span className="whitespace-nowrap">ðŸ“Š Tally: {client.tallyYears.join(', ')}</span>
+              <span className="whitespace-nowrap">📊 Tally: {client.tallyYears.join(', ')}</span>
             )}
             {(client.tin || client.vrn) && (
               <div className="flex gap-2 items-center">
@@ -170,10 +170,10 @@ function ClientRow({ client, onEdit, onDelete, onHide }) {
               className="btn-ghost text-xs py-1 px-2"
               title="Hide client (manage in Settings)"
             >
-              ðŸ™ˆ
+              🙈
             </button>
-            <button onClick={() => onEdit(client)} className="btn-ghost text-xs py-1 px-2" title="Edit">âœï¸</button>
-            <button onClick={() => onDelete(client.id)} className="btn-ghost text-xs py-1 px-2 hover:text-red-400" title="Delete">ðŸ—‘</button>
+            <button onClick={() => onEdit(client)} className="btn-ghost text-xs py-1 px-2" title="Edit">✏️</button>
+            <button onClick={() => onDelete(client.id)} className="btn-ghost text-xs py-1 px-2 hover:text-red-400" title="Delete">🗑</button>
           </div>
         </div>
       </div>
@@ -181,7 +181,7 @@ function ClientRow({ client, onEdit, onDelete, onHide }) {
   );
 }
 
-// â”€â”€â”€ Clients Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Clients Page -------------------------------------------------------------
 
 export default function Clients() {
   const clients = useClients();
@@ -236,7 +236,7 @@ export default function Clients() {
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {clients.filter(c => !c.hidden).length} clients
             {hiddenCount > 0 && (
-              <span className="text-gray-500 dark:text-gray-500"> Â· {hiddenCount} hidden â€” manage in Settings</span>
+              <span className="text-gray-500 dark:text-gray-500"> · {hiddenCount} hidden — manage in Settings</span>
             )}
           </p>
         </div>
@@ -287,7 +287,7 @@ export default function Clients() {
       {/* Client Grid */}
       {filtered.length === 0 ? (
         <EmptyState
-          icon="ðŸ‘¥"
+          icon="👥"
           title="No clients found"
           message="Try adjusting your search or tax type filter."
           action={
