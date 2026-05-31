@@ -1,71 +1,59 @@
 # AccountantOS
 
-A personal accounting task & deadline manager built with React + TailwindCSS.
-Designed for accountants managing multiple clients, tax deadlines, and ADHD-friendly workflows.
+**AccountantOS** is a private, invite-only workspace built for accountants managing multiple clients in Tanzania. It keeps every deadline, filing, task, and tax calculation in one place — synced across devices in real time.
 
-## Features
+---
 
-- **Tax Calendar Dashboard** — Live countdowns for VAT, PAYE/SDL/WHT, NSSF/WCF, Provisional Tax, City Levy
-- **Client Management** — 22 pre-loaded clients with tax type tagging
-- **Filing Tracker** — Mark each client's returns as Pending / In Progress / Completed
-- **Progress Heatmap** — See which clients are done vs pending per deadline
-- **Full Calendar View** — Month-by-month view with deadline overlays per day
-- **Task Manager** — General tasks linked to clients with priority + due dates
-- **Filing History** — Full audit trail of all submissions
-- **Export / Import** — JSON backup of all your data
-- **Keyboard Shortcuts** — `D` = mark task done, `N` = new task
-- **Dark Mode** — Default dark theme, togglable in Settings
-- **Team Collaboration** — User authentication and real-time syncing across devices via Supabase. Data is pushed to your personal cloud row automatically.
+## What it does
 
-## Tax Deadline Rules
+### Dashboard
+The home screen. Shows all upcoming and overdue tax deadlines with live countdowns, a client-by-client completion heatmap, and today's open tasks — all at a glance.
 
-| Tax Type         | Period | Due Date             |
-|-----------------|--------|----------------------|
-| VAT              | Month  | 20th of next month   |
-| PAYE/SDL/WHT     | Month  | 7th of next month    |
-| NSSF/WCF         | Month  | 30th of next month   |
-| Provisional Tax  | Quarterly | 31 Mar / 30 Jun / 30 Sep / 31 Dec |
-| City Levy        | Quarterly | 31 Mar / 30 Jun / 30 Sep / 31 Dec |
+### Clients
+A full client list with tax type tags (VAT, PAYE, NSSF, Provisional Tax, City Levy, and more). Each client has its own filing status tracker where you mark returns as Pending, In Progress, or Completed.
 
-## Installation
+### Tax Calendar
+A month-by-month calendar with Tanzania tax deadlines overlaid on each due date. Covers VAT (20th), PAYE/SDL/WHT (7th), NSSF/WCF (last day of month), Provisional Tax, and City Levy (quarterly).
 
-```bash
-# Install dependencies
-npm install
+### Monthly Work
+Per-client monthly checklists — bank statements, tally updates, stock sheets, VAT computations, and custom tasks. Track which work is done for each client each month.
 
-# Start development server
-npm run dev
+### Tax Tool
+13 built-in Tanzania tax calculators across five tabs:
+- **VAT** — output, input, net payable
+- **Provisional Tax** — annual estimate and quarterly instalments
+- **WHT** — 19 withholding tax types with correct resident/non-resident rates
+- **Employment** — PAYE, NSSF (employee + employer), SDL, WCF, full payslip with PDF export
+- **City Levy** — turnover-based levy with automatic rate switching (pre/post 2025 Q3)
 
-# Build for production
-npm run build
-```
+### Tasks
+A general task manager with client linking, priority levels, and due dates. Keyboard shortcut `D` marks the selected task done, `N` creates a new one.
 
-Then open **http://localhost:5173** in your browser.
+### Tally Tracker
+Quick data-entry counter for tracking figures during bookkeeping sessions.
 
-## Usage
+### Filing History
+A full audit trail of every filing action — filterable by client, tax type, and date.
 
-1. **Dashboard** — Your main landing page. Shows all upcoming/overdue deadlines, progress bars, and today's tasks.
-2. **Clients** — View/add/edit clients. Click **Filings** on any client to mark returns as done.
-3. **Calendar** — Monthly calendar. Click any day to see deadlines and tasks.
-4. **Tasks** — Create and manage general tasks. Use `D` to mark a selected task done.
-5. **History** — Filter and review all past filings.
-6. **Settings** (gear icon) — Export/import data, toggle dark mode, enable notifications.
+### Notes
+Freeform client notes with search.
 
-## Data Backup
+### Focus Mode
+Distraction-free view that hides the sidebar and surfaces only the most urgent items.
 
-Use **Settings → Export JSON Backup** regularly to save your data.
-To restore, use **Settings → Import JSON Backup**.
+### AI Assistant
+Built-in assistant for quick accounting queries.
 
-## Supabase Setup (Manual Steps)
+### Export / Import
+Full JSON backup and restore of all app data from Settings.
 
-You need to do this in your Supabase dashboard before going live or inviting your team:
+---
 
-1. **Authentication → Providers**: Enable the Email provider.
-2. **Authentication → Users**: Click "Invite User" (or "Add User") for each team member. This keeps the app closed and invite-only.
-3. **Table Editor → app_state → RLS**: Enable Row Level Security (RLS) on the `app_state` table. Add these two policies:
-   - **SELECT**: `auth.role() = 'authenticated'`
-   - **INSERT/UPDATE (upsert)**: `auth.role() = 'authenticated'`
-   
-   This locks the database so only your logged-in team can read or write any data.
+## Key details
 
-> **Data migration note**: The first time each user logs in, their existing `localStorage` data will automatically push up to their new personal row in Supabase — no manual migration needed.
+- **Invite-only** — access is restricted to authorised users only
+- **Cloud synced** — all data syncs automatically across devices via Supabase
+- **Dark mode** — default dark theme, togglable in Settings
+- **Tanzania-specific** — deadlines, rates, and calculators follow TRA rules
+- **Configurable tax rates** — all rates (VAT, PAYE bands, WHT types, SDL, WCF, City Levy) are editable in Settings with lock/unlock protection against accidental changes
+- **PWA** — installable on desktop and mobile as a standalone app
