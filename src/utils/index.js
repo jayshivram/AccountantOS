@@ -119,10 +119,11 @@ export function payeDueDate(periodYear, periodMonth) {
 }
 
 /**
- * NSSF/WCF: due 30th of the following month.
+ * NSSF/WCF: due last day of the following month.
  */
 export function nssfDueDate(periodYear, periodMonth) {
-  return new Date(periodYear, periodMonth + 1, 30);
+  // day=0 of month+2 gives the last day of month+1
+  return new Date(periodYear, periodMonth + 2, 0);
 }
 
 /**
@@ -325,8 +326,9 @@ export function getDeadlinesForDate(dateStr) {
     matches.push({ type: 'SDL',  period: `${periodY}-${String(periodM).padStart(2, '0')}`, label: `SDL ${pLabel}` });
     matches.push({ type: 'WHT',  period: `${periodY}-${String(periodM).padStart(2, '0')}`, label: `WHT ${pLabel}` });
   }
-  // NSSF / WCF on 30th
-  if (day === 30) {
+  // NSSF / WCF on last day of the month
+  const lastDayOfMonth = new Date(y, m + 1, 0).getDate();
+  if (day === lastDayOfMonth) {
     const periodM = m === 0 ? 11 : m - 1;
     const periodY = m === 0 ? y - 1 : y;
     const nLabel = format(new Date(periodY, periodM, 1), 'MMM yyyy');

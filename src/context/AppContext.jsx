@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef, useState, useCallback } from 'react';
-import { INITIAL_CLIENTS, INITIAL_TAX_RETURNS, INITIAL_TASKS } from '../data/initialData.js';
+import { INITIAL_CLIENTS, INITIAL_TAX_RETURNS, INITIAL_TASKS, DEFAULT_TAX_RATES, DEFAULT_MONTHLY_TASKS } from '../data/initialData.js';
 import { saveState, loadState, uuid, getUpcomingDeadlines, checkAndNotify, getLastSyncTs, setLastSyncTs } from '../utils/index.js';
 import { supabase } from '../lib/supabase.js';
 
@@ -10,32 +10,40 @@ function getInitialState() {
   if (saved) {
     return {
       ...saved,
-      tallyProgress:     saved.tallyProgress     || [],
-      tallyEnrollments:  saved.tallyEnrollments   || [],
-      tallyAdHoc:        saved.tallyAdHoc          || [],
-      cancellations:     saved.cancellations      || [],
-      notes:             saved.notes              || [],
-      pastebins:         saved.pastebins          || [],
-      workingHours:      saved.workingHours       || {},
-      hourFormat:        saved.hourFormat         || '24',
+      tallyProgress:        saved.tallyProgress        || [],
+      tallyEnrollments:     saved.tallyEnrollments      || [],
+      tallyAdHoc:           saved.tallyAdHoc             || [],
+      cancellations:        saved.cancellations         || [],
+      notes:                saved.notes                 || [],
+      pastebins:            saved.pastebins             || [],
+      workingHours:         saved.workingHours          || {},
+      hourFormat:           saved.hourFormat            || '24',
+      monthlyWork:          saved.monthlyWork           || [],
+      clientWorkTemplates:  saved.clientWorkTemplates   || {},
+      monthlyWorkClients:   saved.monthlyWorkClients    || [],
+      taxRates:             { ...DEFAULT_TAX_RATES, ...(saved.taxRates || {}), WHT: { ...DEFAULT_TAX_RATES.WHT, ...(saved.taxRates?.WHT || {}) } },
       currentView:   'dashboard',
       currentMonth:  new Date().getFullYear() * 100 + new Date().getMonth(),
     };
   }
   return {
-    clients:           INITIAL_CLIENTS,
-    taxReturns:        INITIAL_TAX_RETURNS,
-    tasks:             INITIAL_TASKS,
-    tallyProgress:     [],
-    tallyEnrollments:  [],
-    tallyAdHoc:        [],
-    cancellations:     [],
-    notes:             [],
-    pastebins:         [],
-    workingHours:      {},
-    hourFormat:        '24',
-    darkMode:          false,
-    notifications:     false,
+    clients:              INITIAL_CLIENTS,
+    taxReturns:           INITIAL_TAX_RETURNS,
+    tasks:                INITIAL_TASKS,
+    tallyProgress:        [],
+    tallyEnrollments:     [],
+    tallyAdHoc:           [],
+    cancellations:        [],
+    notes:                [],
+    pastebins:            [],
+    workingHours:         {},
+    hourFormat:           '24',
+    darkMode:             false,
+    notifications:        false,
+    monthlyWork:          [],
+    clientWorkTemplates:  {},
+    monthlyWorkClients:   [],
+    taxRates:             DEFAULT_TAX_RATES,
     currentView:   'dashboard',
     currentMonth:  new Date().getFullYear() * 100 + new Date().getMonth(),
   };
@@ -272,6 +280,64 @@ function reducer(state, action) {
         },
       };
     }
+
+    // ── Tax Rates ──
+    case 'SET_TAX_RATE':
+      return { ...state, taxRates: { ...state.taxRates, [action.payload.key]: action.payload.value } };
+    case 'SET_TAX_BAND': {
+      const bands = state.taxRates[action.payload.bandKey].map((b, i) =>
+        i === action.payload.index ? { ...b, [action.payload.field]: action.payload.value } : b
+      );
+      return { ...state, taxRates: { ...state.taxRates, [action.payload.bandKey]: bands } };
+    }
+    case 'SET_WHT_RATE':
+      return { ...state, taxRates: { ...state.taxRates, WHT: { ...state.taxRates.WHT, [action.payload.key]: action.payload.value } } };
+    case 'RESET_TAX_RATES':
+      return { ...state, taxRates: DEFAULT_TAX_RATES };
+
+    // ── Monthly Work ──
+    case 'UPSERT_MONTHLY_WORK': {
+      const exists = state.monthlyWork.find(m => m.clientId === action.payload.clientId && m.monthKey === action.payload.monthKey);
+      if (exists) {
+        return { ...state, monthlyWork: state.monthlyWork.map(m =>
+          m.clientId === action.payload.clientId && m.monthKey === action.payload.monthKey ? { ...m, ...action.payload } : m
+        )};
+      }
+      return { ...state, monthlyWork: [...state.monthlyWork, action.payload] };
+    }
+    case 'TOGGLE_MONTHLY_WORK_TASK': {
+      return { ...state, monthlyWork: state.monthlyWork.map(m => {
+        if (m.clientId !== action.payload.clientId || m.monthKey !== action.payload.monthKey) return m;
+        const tasks = m.tasks.map(t => t.id === action.payload.taskId ? { ...t, done: !t.done } : t);
+        return { ...m, tasks };
+      })};
+    }
+    case 'ADD_MONTHLY_WORK_TASK': {
+      return { ...state, monthlyWork: state.monthlyWork.map(m => {
+        if (m.clientId !== action.payload.clientId || m.monthKey !== action.payload.monthKey) return m;
+        return { ...m, tasks: [...m.tasks, action.payload.task] };
+      })};
+    }
+    case 'DELETE_MONTHLY_WORK_TASK': {
+      return { ...state, monthlyWork: state.monthlyWork.map(m => {
+        if (m.clientId !== action.payload.clientId || m.monthKey !== action.payload.monthKey) return m;
+        return { ...m, tasks: m.tasks.filter(t => t.id !== action.payload.taskId) };
+      })};
+    }
+    case 'UPDATE_MONTHLY_WORK_NOTES': {
+      return { ...state, monthlyWork: state.monthlyWork.map(m => {
+        if (m.clientId !== action.payload.clientId || m.monthKey !== action.payload.monthKey) return m;
+        return { ...m, notes: action.payload.notes };
+      })};
+    }
+    case 'DELETE_MONTHLY_WORK':
+      return { ...state, monthlyWork: state.monthlyWork.filter(m =>
+        !(m.clientId === action.payload.clientId && m.monthKey === action.payload.monthKey)
+      )};
+    case 'SET_CLIENT_WORK_TEMPLATE':
+      return { ...state, clientWorkTemplates: { ...state.clientWorkTemplates, [action.payload.clientId]: action.payload.tasks } };
+    case 'SET_MONTHLY_WORK_CLIENTS':
+      return { ...state, monthlyWorkClients: action.payload };
 
     default:
       return state;
