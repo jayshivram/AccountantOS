@@ -485,6 +485,153 @@ function StorageUsageSection() {
   );
 }
 
+// ─── Tax Rates Settings Section ────────────────────────────────────────────────
+
+function TaxRatesSection() {
+  const { state, dispatch } = useApp();
+  const rates = state.taxRates || {};
+  const [tab, setTab] = useState('core');
+
+  const tabs = ['core', 'paye', 'prov', 'wht'];
+  const tabLabels = ['Core', 'PAYE', 'Prov.', 'WHT'];
+
+  const whtLabels = {
+    rent: 'Rent',
+    dividend_resident: 'Dividend (Resident)',
+    dividend_non_resident: 'Dividend (Non-Res.)',
+    interest_resident: 'Interest (Resident)',
+    interest_non_resident: 'Interest (Non-Res.)',
+    royalty_resident: 'Royalty (Resident)',
+    royalty_non_resident: 'Royalty (Non-Res.)',
+    service_fee_resident: 'Service Fee (Res.)',
+    service_fee_non_resident: 'Service Fee (Non-Res.)',
+    technical_fee_resident: 'Technical Fee (Res.)',
+    technical_fee_non_resident: 'Technical Fee (Non-Res.)',
+    commission_resident: 'Commission (Res.)',
+    commission_non_resident: 'Commission (Non-Res.)',
+    insurance_premium: 'Insurance Premium',
+    pension_lump_sum: 'Pension Lump Sum',
+    natural_resource: 'Natural Resource',
+    aircraft_lease: 'Aircraft Lease',
+    ship_lease: 'Ship Lease',
+    other_non_resident: 'Other (Non-Res.)',
+  };
+
+  function PctInput({ stateKey, decimals = 2, multiplier = 100 }) {
+    const val = rates[stateKey];
+    const display = val != null ? (val * multiplier).toFixed(decimals) : '';
+    return (
+      <input type="number" step="any" defaultValue={display} key={display}
+        onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) dispatch({ type: 'SET_TAX_RATE', payload: { key: stateKey, value: v / multiplier } }); }}
+        className="w-20 px-2 py-1 text-xs text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+    );
+  }
+
+  function RawInput({ stateKey }) {
+    const val = rates[stateKey];
+    return (
+      <input type="number" step="1" defaultValue={val ?? ''} key={val}
+        onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) dispatch({ type: 'SET_TAX_RATE', payload: { key: stateKey, value: v } }); }}
+        className="w-20 px-2 py-1 text-xs text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+    );
+  }
+
+  const Row = ({ label, suffix = '%', children }) => (
+    <div className="flex items-center justify-between py-1.5 border-b border-gray-100 dark:border-gray-800 last:border-0">
+      <span className="text-xs text-gray-600 dark:text-gray-400">{label}</span>
+      <div className="flex items-center gap-1">
+        <span className="text-xs text-gray-400 dark:text-gray-600">{suffix}</span>
+        {children}
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Tax Rates</p>
+        <button
+          onClick={() => { if (window.confirm('Reset all tax rates to defaults?')) dispatch({ type: 'RESET_TAX_RATES' }); }}
+          className="text-[11px] text-red-500 hover:text-red-600 dark:hover:text-red-400 hover:underline transition"
+        >
+          Reset defaults
+        </button>
+      </div>
+
+      <div className="flex gap-0.5 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg mb-3">
+        {tabLabels.map((label, i) => (
+          <button key={label} onClick={() => setTab(tabs[i])}
+            className={cn('flex-1 py-1 text-[11px] font-semibold rounded-md transition',
+              tab === tabs[i] ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700')}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'core' && (
+        <div>
+          <Row label="VAT"><PctInput stateKey="VAT" /></Row>
+          <Row label="Corporate Tax"><PctInput stateKey="CORPORATE" /></Row>
+          <Row label="NSSF Employee"><PctInput stateKey="NSSF_EMPLOYEE" /></Row>
+          <Row label="NSSF Employer"><PctInput stateKey="NSSF_EMPLOYER" /></Row>
+          <Row label="SDL Rate"><PctInput stateKey="SDL" decimals={1} /></Row>
+          <Row label="SDL Min Employees" suffix="#"><RawInput stateKey="SDL_MIN_EMPLOYEES" /></Row>
+          <Row label="WCF Rate"><PctInput stateKey="WCF" decimals={3} /></Row>
+          <Row label="City Levy (old)"><PctInput stateKey="CITY_LEVY_OLD" decimals={4} /></Row>
+          <Row label="City Levy (new)"><PctInput stateKey="CITY_LEVY_NEW" decimals={4} /></Row>
+        </div>
+      )}
+
+      {(tab === 'paye' || tab === 'prov') && (() => {
+        const bandKey = tab === 'paye' ? 'PAYE_BANDS' : 'PROV_BANDS';
+        const bands = rates[bandKey] || [];
+        return (
+          <div>
+            <div className="grid grid-cols-4 gap-1 text-[10px] font-semibold text-gray-400 dark:text-gray-500 px-1 pb-1">
+              <span>Min</span><span>Max</span><span>Rate%</span><span>Fixed</span>
+            </div>
+            {bands.map((band, i) => (
+              <div key={i} className="grid grid-cols-4 gap-1 mb-1">
+                {['min', 'max', 'rate', 'fixed'].map(field => (
+                  <input key={`${bandKey}-${i}-${field}-${band[field]}`} type="number" step="any"
+                    defaultValue={field === 'rate' ? (band[field] * 100).toFixed(1) : band[field] === Infinity ? '' : band[field]}
+                    placeholder={field === 'max' && band[field] === Infinity ? '∞' : ''}
+                    onBlur={e => {
+                      let v;
+                      if (field === 'rate') v = parseFloat(e.target.value) / 100;
+                      else if (e.target.value === '' && field === 'max') v = Infinity;
+                      else v = parseFloat(e.target.value);
+                      if (!isNaN(v)) dispatch({ type: 'SET_TAX_BAND', payload: { bandKey, index: i, field, value: v } });
+                    }}
+                    className="w-full px-1.5 py-1 text-[11px] text-right rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                ))}
+              </div>
+            ))}
+            <p className="text-[10px] text-gray-400 dark:text-gray-600 pt-1">Min/Max/Fixed in TZS. Leave Max blank for top band (∞).</p>
+          </div>
+        );
+      })()}
+
+      {tab === 'wht' && (
+        <div className="space-y-0 max-h-64 overflow-y-auto pr-1">
+          {Object.entries(rates.WHT || {}).map(([key, val]) => (
+            <div key={key} className="flex items-center justify-between py-1.5 border-b border-gray-100 dark:border-gray-800 last:border-0">
+              <span className="text-xs text-gray-600 dark:text-gray-400 mr-2 truncate">{whtLabels[key] || key}</span>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <span className="text-xs text-gray-400 dark:text-gray-600">%</span>
+                <input type="number" step="any"
+                  defaultValue={(val * 100).toFixed(1)} key={`${key}-${val}`}
+                  onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) dispatch({ type: 'SET_WHT_RATE', payload: { key, value: v / 100 } }); }}
+                  className="w-16 px-2 py-1 text-xs text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Settings Modal ───────────────────────────────────────────────────────────
 
 function SettingsModal({ isOpen, onClose, onLogout, userEmail }) {
@@ -631,6 +778,11 @@ function SettingsModal({ isOpen, onClose, onLogout, userEmail }) {
           <p><kbd className="bg-gray-100 dark:bg-gray-800 px-1 rounded border border-gray-300 dark:border-gray-700">D</kbd> Mark selected task done</p>
           <p><kbd className="bg-gray-100 dark:bg-gray-800 px-1 rounded border border-gray-300 dark:border-gray-700">N</kbd> New task (on Tasks page)</p>
         </div>
+
+        <hr className="border-gray-200 dark:border-gray-800" />
+
+        {/* Tax Rates */}
+        <TaxRatesSection />
 
         <hr className="border-gray-200 dark:border-gray-800" />
 
