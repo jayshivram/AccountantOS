@@ -487,43 +487,72 @@ function StorageUsageSection() {
 
 // ─── Tax Rates Settings Section ────────────────────────────────────────────────
 
+const WHT_LABELS = {
+  rent: 'Rent',
+  dividend_resident: 'Dividend (Resident)',
+  dividend_non_resident: 'Dividend (Non-Resident)',
+  interest_resident: 'Interest (Resident)',
+  interest_non_resident: 'Interest (Non-Resident)',
+  royalty_resident: 'Royalty (Resident)',
+  royalty_non_resident: 'Royalty (Non-Resident)',
+  service_fee_resident: 'Service Fee (Resident)',
+  service_fee_non_resident: 'Service Fee (Non-Resident)',
+  technical_fee_resident: 'Technical Fee (Resident)',
+  technical_fee_non_resident: 'Technical Fee (Non-Resident)',
+  commission_resident: 'Commission (Resident)',
+  commission_non_resident: 'Commission (Non-Resident)',
+  insurance_premium: 'Insurance Premium',
+  pension_lump_sum: 'Pension Lump Sum',
+  natural_resource: 'Natural Resource',
+  aircraft_lease: 'Aircraft Lease',
+  ship_lease: 'Ship Lease',
+  other_non_resident: 'Other (Non-Resident)',
+};
+
 function TaxRatesSection() {
   const { state, dispatch } = useApp();
   const rates = state.taxRates || {};
+  const [expanded, setExpanded] = useState(false);
+  const [editMode, setEditMode] = useState(false);
   const [tab, setTab] = useState('core');
 
-  const tabs = ['core', 'paye', 'prov', 'wht'];
-  const tabLabels = ['Core', 'PAYE', 'Prov.', 'WHT'];
+  function toggle() { setExpanded(v => !v); if (expanded) setEditMode(false); }
+  function handleReset() {
+    if (window.confirm('Reset ALL tax rates to Tanzania defaults?\nThis cannot be undone.')) {
+      dispatch({ type: 'RESET_TAX_RATES' });
+      setEditMode(false);
+    }
+  }
 
-  const whtLabels = {
-    rent: 'Rent',
-    dividend_resident: 'Dividend (Resident)',
-    dividend_non_resident: 'Dividend (Non-Res.)',
-    interest_resident: 'Interest (Resident)',
-    interest_non_resident: 'Interest (Non-Res.)',
-    royalty_resident: 'Royalty (Resident)',
-    royalty_non_resident: 'Royalty (Non-Res.)',
-    service_fee_resident: 'Service Fee (Res.)',
-    service_fee_non_resident: 'Service Fee (Non-Res.)',
-    technical_fee_resident: 'Technical Fee (Res.)',
-    technical_fee_non_resident: 'Technical Fee (Non-Res.)',
-    commission_resident: 'Commission (Res.)',
-    commission_non_resident: 'Commission (Non-Res.)',
-    insurance_premium: 'Insurance Premium',
-    pension_lump_sum: 'Pension Lump Sum',
-    natural_resource: 'Natural Resource',
-    aircraft_lease: 'Aircraft Lease',
-    ship_lease: 'Ship Lease',
-    other_non_resident: 'Other (Non-Res.)',
-  };
+  const pct = (v, d = 2) => v != null ? `${(v * 100).toFixed(d)}%` : '—';
+  const inputCls = 'w-20 px-3 py-1.5 text-sm text-right rounded-xl border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 transition';
+  const bandInputCls = 'w-full px-2.5 py-1.5 text-sm rounded-xl border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 text-gray-900 dark:text-white text-right focus:outline-none focus:ring-2 focus:ring-amber-500 transition';
+
+  function RateRow({ label, description, value, children }) {
+    return (
+      <div className={cn('flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl transition',
+        editMode ? 'bg-amber-50/50 dark:bg-amber-900/10' : 'bg-gray-50 dark:bg-gray-800/60')}>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-200 leading-none">{label}</p>
+          {description && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{description}</p>}
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {editMode ? children : <span className="text-sm font-semibold text-gray-900 dark:text-white">{value}</span>}
+        </div>
+      </div>
+    );
+  }
 
   function PctInput({ stateKey, decimals = 2, multiplier = 100 }) {
     const val = rates[stateKey];
     const display = val != null ? (val * multiplier).toFixed(decimals) : '';
     return (
-      <input type="number" step="any" defaultValue={display} key={display}
-        onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) dispatch({ type: 'SET_TAX_RATE', payload: { key: stateKey, value: v / multiplier } }); }}
-        className="w-20 px-2 py-1 text-xs text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+      <>
+        <input type="number" step="any" defaultValue={display} key={display}
+          onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) dispatch({ type: 'SET_TAX_RATE', payload: { key: stateKey, value: v / multiplier } }); }}
+          className={inputCls} />
+        <span className="text-sm text-gray-400 dark:text-gray-500 w-3">%</span>
+      </>
     );
   }
 
@@ -532,100 +561,162 @@ function TaxRatesSection() {
     return (
       <input type="number" step="1" defaultValue={val ?? ''} key={val}
         onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) dispatch({ type: 'SET_TAX_RATE', payload: { key: stateKey, value: v } }); }}
-        className="w-20 px-2 py-1 text-xs text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+        className={inputCls} />
     );
   }
 
-  const Row = ({ label, suffix = '%', children }) => (
-    <div className="flex items-center justify-between py-1.5 border-b border-gray-100 dark:border-gray-800 last:border-0">
-      <span className="text-xs text-gray-600 dark:text-gray-400">{label}</span>
-      <div className="flex items-center gap-1">
-        <span className="text-xs text-gray-400 dark:text-gray-600">{suffix}</span>
-        {children}
-      </div>
-    </div>
-  );
-
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Tax Rates</p>
-        <button
-          onClick={() => { if (window.confirm('Reset all tax rates to defaults?')) dispatch({ type: 'RESET_TAX_RATES' }); }}
-          className="text-[11px] text-red-500 hover:text-red-600 dark:hover:text-red-400 hover:underline transition"
-        >
-          Reset defaults
-        </button>
-      </div>
-
-      <div className="flex gap-0.5 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg mb-3">
-        {tabLabels.map((label, i) => (
-          <button key={label} onClick={() => setTab(tabs[i])}
-            className={cn('flex-1 py-1 text-[11px] font-semibold rounded-md transition',
-              tab === tabs[i] ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700')}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'core' && (
-        <div>
-          <Row label="VAT"><PctInput stateKey="VAT" /></Row>
-          <Row label="Corporate Tax"><PctInput stateKey="CORPORATE" /></Row>
-          <Row label="NSSF Employee"><PctInput stateKey="NSSF_EMPLOYEE" /></Row>
-          <Row label="NSSF Employer"><PctInput stateKey="NSSF_EMPLOYER" /></Row>
-          <Row label="SDL Rate"><PctInput stateKey="SDL" decimals={1} /></Row>
-          <Row label="SDL Min Employees" suffix="#"><RawInput stateKey="SDL_MIN_EMPLOYEES" /></Row>
-          <Row label="WCF Rate"><PctInput stateKey="WCF" decimals={3} /></Row>
-          <Row label="City Levy (old)"><PctInput stateKey="CITY_LEVY_OLD" decimals={4} /></Row>
-          <Row label="City Levy (new)"><PctInput stateKey="CITY_LEVY_NEW" decimals={4} /></Row>
+      {/* Collapsible header */}
+      <button onClick={toggle}
+        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-100 dark:hover:bg-gray-800 transition">
+        <div className="flex items-center gap-2 min-w-0">
+          <svg className="w-4 h-4 text-gray-500 dark:text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+          </svg>
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Tax Rates</span>
+          {!expanded && <span className="text-xs text-gray-400 dark:text-gray-500 truncate">VAT {pct(rates.VAT)} · PAYE {rates.PAYE_BANDS?.length || 0} bands · WHT {Object.keys(rates.WHT || {}).length} types</span>}
         </div>
-      )}
+        <svg className={cn('w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200', expanded && 'rotate-180')} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
 
-      {(tab === 'paye' || tab === 'prov') && (() => {
-        const bandKey = tab === 'paye' ? 'PAYE_BANDS' : 'PROV_BANDS';
-        const bands = rates[bandKey] || [];
-        return (
-          <div>
-            <div className="grid grid-cols-4 gap-1 text-[10px] font-semibold text-gray-400 dark:text-gray-500 px-1 pb-1">
-              <span>Min</span><span>Max</span><span>Rate%</span><span>Fixed</span>
+      {expanded && (
+        <div className="mt-3 space-y-3">
+
+          {/* Lock / Unlock bar */}
+          {editMode ? (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
+              <svg className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span className="text-xs text-amber-700 dark:text-amber-300 font-medium flex-1">Editing — changes apply immediately</span>
+              <button onClick={handleReset} className="text-xs text-red-500 hover:text-red-600 dark:hover:text-red-400 font-medium hover:underline transition">Reset</button>
+              <button onClick={() => setEditMode(false)}
+                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold transition">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                Lock
+              </button>
             </div>
-            {bands.map((band, i) => (
-              <div key={i} className="grid grid-cols-4 gap-1 mb-1">
-                {['min', 'max', 'rate', 'fixed'].map(field => (
-                  <input key={`${bandKey}-${i}-${field}-${band[field]}`} type="number" step="any"
-                    defaultValue={field === 'rate' ? (band[field] * 100).toFixed(1) : band[field] === Infinity ? '' : band[field]}
-                    placeholder={field === 'max' && band[field] === Infinity ? '∞' : ''}
-                    onBlur={e => {
-                      let v;
-                      if (field === 'rate') v = parseFloat(e.target.value) / 100;
-                      else if (e.target.value === '' && field === 'max') v = Infinity;
-                      else v = parseFloat(e.target.value);
-                      if (!isNaN(v)) dispatch({ type: 'SET_TAX_BAND', payload: { bandKey, index: i, field, value: v } });
-                    }}
-                    className="w-full px-1.5 py-1 text-[11px] text-right rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          ) : (
+            <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800">
+              <div className="flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <span className="text-xs text-gray-500 dark:text-gray-400">Locked — read only</span>
+              </div>
+              <button onClick={() => setEditMode(true)}
+                className="text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-400 hover:text-amber-600 dark:hover:border-amber-600 dark:hover:text-amber-400 font-medium transition">
+                Unlock to Edit
+              </button>
+            </div>
+          )}
+
+          {/* Tabs */}
+          <div className="flex gap-0.5 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-xl">
+            {[['core','Core'],['paye','PAYE'],['prov','Provisional'],['wht','WHT']].map(([key, label]) => (
+              <button key={key} onClick={() => setTab(key)}
+                className={cn('flex-1 py-1.5 text-xs font-semibold rounded-lg transition',
+                  tab === key ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200')}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {tab === 'core' && (
+            <div className="space-y-2">
+              <RateRow label="VAT" description="Value Added Tax" value={pct(rates.VAT)}><PctInput stateKey="VAT" /></RateRow>
+              <RateRow label="Corporate Tax" description="Company income tax" value={pct(rates.CORPORATE)}><PctInput stateKey="CORPORATE" /></RateRow>
+              <RateRow label="NSSF Employee" description="Employee contribution" value={pct(rates.NSSF_EMPLOYEE)}><PctInput stateKey="NSSF_EMPLOYEE" /></RateRow>
+              <RateRow label="NSSF Employer" description="Employer contribution" value={pct(rates.NSSF_EMPLOYER)}><PctInput stateKey="NSSF_EMPLOYER" /></RateRow>
+              <RateRow label="SDL Rate" description="Skills Development Levy" value={pct(rates.SDL, 1)}><PctInput stateKey="SDL" decimals={1} /></RateRow>
+              <RateRow label="SDL Min Employees" description="Min staff to trigger SDL" value={`${rates.SDL_MIN_EMPLOYEES ?? 10} staff`}>
+                <RawInput stateKey="SDL_MIN_EMPLOYEES" />
+                <span className="text-sm text-gray-400 dark:text-gray-500">staff</span>
+              </RateRow>
+              <RateRow label="WCF Rate" description="Workers Compensation Fund" value={pct(rates.WCF, 3)}><PctInput stateKey="WCF" decimals={3} /></RateRow>
+              <RateRow label="City Levy (pre-2025 Q3)" description="Old rate" value={pct(rates.CITY_LEVY_OLD, 4)}><PctInput stateKey="CITY_LEVY_OLD" decimals={4} /></RateRow>
+              <RateRow label="City Levy (2025 Q3+)" description="Current rate" value={pct(rates.CITY_LEVY_NEW, 4)}><PctInput stateKey="CITY_LEVY_NEW" decimals={4} /></RateRow>
+            </div>
+          )}
+
+          {(tab === 'paye' || tab === 'prov') && (() => {
+            const bandKey = tab === 'paye' ? 'PAYE_BANDS' : 'PROV_BANDS';
+            const bands = rates[bandKey] || [];
+            const unit = tab === 'paye' ? 'monthly' : 'annual';
+            return (
+              <div className="space-y-3">
+                {editMode && <p className="text-xs text-amber-600 dark:text-amber-400 px-1">Thresholds in TZS ({unit}). Leave Max blank for top band.</p>}
+                {bands.map((band, i) => (
+                  <div key={i} className={cn('p-3 rounded-xl border transition',
+                    editMode ? 'bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-700' : 'bg-gray-50 dark:bg-gray-800/60 border-gray-100 dark:border-gray-800')}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Band {i + 1}</span>
+                      <span className={cn('text-xs font-bold', editMode ? 'text-amber-600 dark:text-amber-400' : 'text-blue-600 dark:text-blue-400')}>
+                        {(band.rate * 100).toFixed(1)}% rate
+                      </span>
+                    </div>
+                    {editMode ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {[['min','Min (TZS)'],['max','Max (TZS)'],['rate','Rate (%)'],['fixed','Fixed (TZS)']].map(([field, label]) => (
+                          <div key={field}>
+                            <label className="block text-xs text-gray-400 dark:text-gray-500 mb-1">{label}</label>
+                            <input type="number" step="any"
+                              key={`${bandKey}-${i}-${field}-${band[field]}`}
+                              defaultValue={field === 'rate' ? (band[field] * 100).toFixed(1) : band[field] === Infinity ? '' : band[field]}
+                              placeholder={field === 'max' && band[field] === Infinity ? '∞' : ''}
+                              onBlur={e => {
+                                let v;
+                                if (field === 'rate') v = parseFloat(e.target.value) / 100;
+                                else if (e.target.value === '' && field === 'max') v = Infinity;
+                                else v = parseFloat(e.target.value);
+                                if (!isNaN(v)) dispatch({ type: 'SET_TAX_BAND', payload: { bandKey, index: i, field, value: v } });
+                              }}
+                              className={bandInputCls} />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                        {[['Min', band.min?.toLocaleString('en-US')], ['Max', band.max === Infinity ? '∞' : band.max?.toLocaleString('en-US')],
+                          ['Rate', `${(band.rate * 100).toFixed(1)}%`], ['Fixed', band.fixed?.toLocaleString('en-US')]].map(([k, v]) => (
+                          <span key={k} className="text-xs text-gray-500 dark:text-gray-400">{k}: <strong className="text-gray-700 dark:text-gray-200">{v}</strong></span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
-            ))}
-            <p className="text-[10px] text-gray-400 dark:text-gray-600 pt-1">Min/Max/Fixed in TZS. Leave Max blank for top band (∞).</p>
-          </div>
-        );
-      })()}
+            );
+          })()}
 
-      {tab === 'wht' && (
-        <div className="space-y-0 max-h-64 overflow-y-auto pr-1">
-          {Object.entries(rates.WHT || {}).map(([key, val]) => (
-            <div key={key} className="flex items-center justify-between py-1.5 border-b border-gray-100 dark:border-gray-800 last:border-0">
-              <span className="text-xs text-gray-600 dark:text-gray-400 mr-2 truncate">{whtLabels[key] || key}</span>
-              <div className="flex items-center gap-1 flex-shrink-0">
-                <span className="text-xs text-gray-400 dark:text-gray-600">%</span>
-                <input type="number" step="any"
-                  defaultValue={(val * 100).toFixed(1)} key={`${key}-${val}`}
-                  onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) dispatch({ type: 'SET_WHT_RATE', payload: { key, value: v / 100 } }); }}
-                  className="w-16 px-2 py-1 text-xs text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
-              </div>
+          {tab === 'wht' && (
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {Object.entries(rates.WHT || {}).map(([key, val]) => (
+                <div key={key} className={cn('flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl transition',
+                  editMode ? 'bg-amber-50/50 dark:bg-amber-900/10' : 'bg-gray-50 dark:bg-gray-800/60')}>
+                  <span className="text-sm text-gray-700 dark:text-gray-300 min-w-0 truncate">{WHT_LABELS[key] || key}</span>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {editMode ? (
+                      <>
+                        <input type="number" step="any" defaultValue={(val * 100).toFixed(1)} key={`${key}-${val}`}
+                          onBlur={e => { const v = parseFloat(e.target.value); if (!isNaN(v)) dispatch({ type: 'SET_WHT_RATE', payload: { key, value: v / 100 } }); }}
+                          className={inputCls} />
+                        <span className="text-sm text-gray-400 dark:text-gray-500 w-3">%</span>
+                      </>
+                    ) : (
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">{pct(val, 1)}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+
         </div>
       )}
     </div>
