@@ -122,7 +122,8 @@ export function calcBandTax(income, bands) {
     const excess = income - (band.min - 1);
     const bandWidth = band.max != null ? band.max - (band.min - 1) : Infinity;
     const taxable = Math.min(excess, bandWidth);
-    tax = band.base + taxable * band.rate;
+    const base = band.fixed ?? band.base ?? 0;
+    tax = base + taxable * band.rate;
     if (band.max == null || income <= band.max) break;
   }
   return Math.max(0, tax);
@@ -138,9 +139,10 @@ export function calcBandReverse(targetTax, bands) {
   for (let i = 0; i < bands.length; i++) {
     const band = bands[i];
     if (band.rate === 0) continue;
-    const maxTaxInBand = band.max != null ? band.base + (band.max - (band.min - 1)) * band.rate : Infinity;
+    const base = band.fixed ?? band.base ?? 0;
+    const maxTaxInBand = band.max != null ? base + (band.max - (band.min - 1)) * band.rate : Infinity;
     if (targetTax <= maxTaxInBand || i === bands.length - 1) {
-      return (band.min - 1) + (targetTax - band.base) / band.rate;
+      return (band.min - 1) + (targetTax - base) / band.rate;
     }
   }
   return 0;
