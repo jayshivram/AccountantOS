@@ -1178,9 +1178,13 @@ function DepreciationSection() {
         <h3 className="text-sm font-bold text-gray-900 dark:text-white">Depreciation Schedule Calculator</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="space-y-1 col-span-2 sm:col-span-1">
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Asset Cost (TZS)</label>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Asset Cost</label>
             <input type="text" inputMode="numeric" value={cost}
-              onChange={e => setCost(e.target.value.replace(/[^0-9,]/g,''))}
+              onChange={e => {
+                const digits = e.target.value.replace(/[^0-9]/g, '');
+                const formatted = digits ? parseInt(digits, 10).toLocaleString('en-US') : '';
+                setCost(formatted);
+              }}
               placeholder="0"
               className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
           </div>
