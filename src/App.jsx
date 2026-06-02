@@ -17,6 +17,17 @@ import Filings        from './pages/Filings.jsx';
 import MonthlyWork    from './pages/MonthlyWork.jsx';
 import TaxTool        from './pages/TaxTool.jsx';
 import Login          from './components/Login.jsx';
+
+// ─── Work Guide Page ──────────────────────────────────────────────────────────
+function WorkGuidePage() {
+  return (
+    <iframe
+      src="/guide.html"
+      title="Work Guide"
+      style={{ width: '100%', height: 'calc(100vh - 64px)', border: 'none', display: 'block' }}
+    />
+  );
+}
 import {
   exportData, importData, requestNotificationPermission, cn, getLastSyncTs, clearState
 } from './utils/index.js';
@@ -121,6 +132,11 @@ const Icons = {
   TaxTool: () => (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+    </svg>
+  ),
+  WorkGuide: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
     </svg>
   ),
 };
@@ -524,7 +540,7 @@ function TaxRatesSection() {
     }
   }
 
-  const pct = (v, d = 2) => v != null ? `${(v * 100).toFixed(d)}%` : '—';
+  const pct = (v, d = 2) => v != null ? `${parseFloat((v * 100).toFixed(d))}%` : '—';
   const inputCls = 'w-20 px-3 py-1.5 text-sm text-right rounded-xl border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 transition';
   const bandInputCls = 'w-full px-2.5 py-1.5 text-sm rounded-xl border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 text-gray-900 dark:text-white text-right focus:outline-none focus:ring-2 focus:ring-amber-500 transition';
 
@@ -1124,6 +1140,7 @@ function Sidebar({ currentView, onNavigate, onSettings, mobileOpen, onMobileClos
     { key: 'filings',       label: 'Filings',         Icon: Icons.Filings       },
     { key: 'monthlywork',   label: 'Monthly Work',    Icon: Icons.MonthlyWork   },
     { key: 'taxtool',       label: 'Tax Tool',        Icon: Icons.TaxTool       },
+    { key: 'workguide',     label: 'Work Guide',      Icon: Icons.WorkGuide     },
     { key: 'focus',         label: 'Focus Mode',      Icon: Icons.Focus         },
     { key: 'calendar',      label: 'Calendar',        Icon: Icons.Calendar      },
     { key: 'tasks',         label: 'Tasks',           Icon: Icons.Tasks         },
@@ -1287,6 +1304,7 @@ function AppShell({ onLogout, userEmail }) {
     ai:            'AI Assistant',
     monthlywork:   'Monthly Work',
     taxtool:       'Tax Tool',
+      workguide:     'Work Guide',
   };
 
   // Render current page
@@ -1307,6 +1325,7 @@ function AppShell({ onLogout, userEmail }) {
       case 'ai':             return <AIAssistant />;
       case 'monthlywork':    return <MonthlyWork />;
       case 'taxtool':        return <TaxTool />;
+      case 'workguide':      return <WorkGuidePage />;
       default:               return <Dashboard onNavigate={navigate} />;
     }
   }

@@ -7,8 +7,8 @@
 
 /** Format as TZS amount, up to 2 decimal places (drops trailing zeros): "TZS 1,500,000.50" */
 export function fmt(n) {
-  if (n == null || isNaN(n)) return 'TZS —';
-  return 'TZS ' + n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  if (n == null || isNaN(n)) return '—';
+  return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 /** Format number only, no prefix, up to 2 decimal places: "1,500,000.50" */
@@ -17,12 +17,12 @@ export function fmtN(n) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-/** Format with 2 decimal places: "TZS 2,500.00" (drops ".00" if zero cents) */
+/** Format with 2 decimal places: "2,500.00" (drops ".00" if zero cents) */
 export function fmtDec(n) {
-  if (n == null || isNaN(n)) return 'TZS —';
+  if (n == null || isNaN(n)) return '—';
   const rounded = Math.round(n * 100) / 100;
   const str = rounded.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return 'TZS ' + str;
+  return str;
 }
 
 /** Format decimal without prefix: "2,500.00" */
@@ -151,9 +151,9 @@ export function calcBandReverse(targetTax, bands) {
 // ─── PAYE ─────────────────────────────────────────────────────────────────────
 
 export function calcPaye(grossMonthly, payeBands, nssfEmployeeRate) {
-  const nssfEmployee = grossMonthly * nssfEmployeeRate;
+  const nssfEmployee = Math.round(grossMonthly * nssfEmployeeRate);
   const taxableIncome = grossMonthly - nssfEmployee;
-  const paye = calcBandTax(taxableIncome, payeBands);
+  const paye = Math.round(calcBandTax(taxableIncome, payeBands));
   const netPay = grossMonthly - nssfEmployee - paye;
   return { nssfEmployee, taxableIncome, paye, netPay };
 }

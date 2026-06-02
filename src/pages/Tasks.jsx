@@ -428,6 +428,7 @@ export default function Tasks() {
   const [showAdd, setShowAdd]           = useState(false);
   const [editing, setEditing]           = useState(null);
   const [deletingId, setDeletingId]     = useState(null);
+  const [jumpTaskOpen, setJumpTaskOpen] = useState(false);
   const [search, setSearch]             = useState('');
   const [filterClient, setFilterClient] = useState('');
   const [filterType, setFilterType]     = useState('');
@@ -698,6 +699,14 @@ export default function Tasks() {
             </svg>
             PDF
           </button>
+          <button
+            onClick={() => setJumpTaskOpen(true)}
+            title="Jump to active task"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+            Jump
+          </button>
           <button onClick={() => setShowAdd(true)} className="btn-primary">+ New Task</button>
         </div>
       </div>
@@ -943,6 +952,38 @@ export default function Tasks() {
       )}
 
       {/* â”€â”€ Modals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* Jump to Task Modal */}
+      <Modal isOpen={jumpTaskOpen} onClose={() => setJumpTaskOpen(false)} title="Jump to Active Task" size="md">
+        <div className="space-y-1 max-h-96 overflow-y-auto">
+          {(() => {
+            const active = allTasks.filter(t => t.status !== 'completed' && t.dueDate);
+            if (!active.length) return <p className="text-center text-gray-500 dark:text-gray-400 py-6 text-sm">No active tasks with due dates.</p>;
+            return active.map(t => {
+              const wk = getISOWeekOfDate(t.dueDate);
+              const client = clients.find(c => c.id === t.clientId);
+              const d = new Date(t.dueDate + 'T00:00:00');
+              const dateLabel = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+              const days = daysUntil(t.dueDate);
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => { if (wk) { setYear(wk.year); setWeek(wk.week); setActiveDay(null); } setJumpTaskOpen(false); }}
+                  className="w-full flex items-start gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition text-left"
+                >
+                  <span className={cn('mt-1 w-2 h-2 rounded-full flex-shrink-0', t.status === 'in_progress' ? 'bg-blue-500' : 'bg-amber-400')} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{t.title}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{dateLabel}{client ? ` · ${client.name}` : ''}</p>
+                  </div>
+                  <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0', days < 0 ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' : days === 0 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400')}>
+                    {days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Today' : `${days}d left`}
+                  </span>
+                </button>
+              );
+            });
+          })()}
+        </div>
+      </Modal>
       <TaskForm isOpen={showAdd} onClose={() => setShowAdd(false)} onSave={d => dispatch({ type: 'ADD_TASK', payload: d })} clients={clients} />
       {editing && (
         <TaskForm

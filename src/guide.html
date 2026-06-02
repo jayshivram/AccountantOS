@@ -1,0 +1,1568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Complete Accounting Guide — ROE, Exchange Gain/Loss &amp; Accounting at Work</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --ink:        oklch(18% 0.015 240);
+  --ink-2:      oklch(38% 0.012 240);
+  --ink-3:      oklch(56% 0.010 240);
+  --rule:       oklch(88% 0.008 240);
+  --surface:    oklch(97% 0.005 240);
+  --paper:      oklch(99.5% 0.003 240);
+  --accent:     oklch(46% 0.18 240);
+  --accent-2:   oklch(60% 0.16 240);
+  --warn:       oklch(62% 0.17 60);
+  --warn-bg:    oklch(97% 0.04 70);
+  --danger:     oklch(52% 0.20 25);
+  --danger-bg:  oklch(97% 0.03 20);
+  --ok:         oklch(52% 0.16 150);
+  --ok-bg:      oklch(97% 0.03 145);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; }
+body {
+  font-family: 'Sora', 'Segoe UI', sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { font-size: 10pt; background: white; }
+  .cover { min-height: auto; padding: 40px; page-break-after: always; }
+  .section { page-break-inside: avoid; }
+  h1, h2 { page-break-after: avoid; }
+  .avoid-break { page-break-inside: avoid; }
+  .page-break { page-break-before: always; }
+  a { color: inherit; text-decoration: none; }
+}
+
+/* ── PRINT BUTTON ── */
+.no-print {
+  position: fixed; top: 24px; right: 24px; z-index: 1000;
+  background: var(--accent); color: white; border: none;
+  padding: 10px 22px; border-radius: 6px;
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer; letter-spacing: 0.3px;
+  box-shadow: 0 4px 16px oklch(46% 0.18 240 / 0.35);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.no-print:hover { transform: translateY(-1px); box-shadow: 0 6px 20px oklch(46% 0.18 240 / 0.45); }
+
+/* ── COVER ── */
+.cover {
+  min-height: 100vh; background: var(--ink); color: white;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 80px 72px; position: relative; overflow: hidden;
+}
+.cover::before {
+  content: ''; position: absolute; top: -120px; right: -120px;
+  width: 600px; height: 600px; border-radius: 50%;
+  background: oklch(46% 0.18 240 / 0.12); pointer-events: none;
+}
+.cover::after {
+  content: ''; position: absolute; bottom: -80px; left: 40px;
+  width: 400px; height: 400px; border-radius: 50%;
+  background: oklch(60% 0.16 240 / 0.07); pointer-events: none;
+}
+.cover-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 2.5px;
+  text-transform: uppercase; color: oklch(70% 0.14 240); margin-bottom: 28px;
+}
+.cover h1 {
+  font-size: clamp(32px, 5vw, 54px); font-weight: 700;
+  line-height: 1.1; letter-spacing: -1px; margin-bottom: 16px; color: white;
+}
+.cover h1 span { color: oklch(65% 0.18 240); }
+.cover-sub {
+  font-size: 17px; font-weight: 300; color: oklch(75% 0.06 240);
+  max-width: 580px; line-height: 1.6; margin-bottom: 52px;
+}
+.cover-stats { display: flex; gap: 40px; flex-wrap: wrap; margin-bottom: 60px; }
+.cover-stat { border-left: 2px solid oklch(46% 0.18 240); padding-left: 16px; }
+.cover-stat-val { font-size: 22px; font-weight: 700; color: white; line-height: 1.2; }
+.cover-stat-label { font-size: 11px; font-weight: 400; color: oklch(60% 0.06 240); letter-spacing: 0.5px; margin-top: 2px; }
+.cover-footer {
+  border-top: 1px solid oklch(30% 0.01 240); padding-top: 24px;
+  display: flex; justify-content: space-between; flex-wrap: wrap;
+  gap: 12px; font-size: 12px; color: oklch(50% 0.06 240);
+}
+.cover-footer strong { color: oklch(65% 0.08 240); }
+
+/* ── LAYOUT ── */
+.main { max-width: 860px; margin: 0 auto; padding: 64px 48px 80px; }
+
+/* ── TOC ── */
+.toc {
+  background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 10px; padding: 28px 32px; margin-bottom: 56px;
+}
+.toc-title {
+  font-size: 11px; font-weight: 700; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--ink-3); margin-bottom: 16px;
+}
+.toc ol { list-style: none; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 32px; }
+@media (max-width: 600px) { .toc ol { grid-template-columns: 1fr; } }
+.toc li { font-size: 13.5px; }
+.toc a { color: var(--accent); text-decoration: none; font-weight: 500; }
+.toc a:hover { text-decoration: underline; }
+.toc-num { color: var(--ink-3); font-size: 11px; font-weight: 700; margin-right: 6px; font-family: 'JetBrains Mono', monospace; }
+.toc-group { font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--ink-3); margin: 20px 0 10px; grid-column: 1 / -1; padding-bottom: 6px; border-bottom: 1px solid var(--rule); }
+
+/* ── SECTION HEADINGS ── */
+.section-label {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 2.5px;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 8px;
+  display: flex; align-items: center; gap: 10px;
+}
+.section-label::after { content: ''; flex: 1; height: 1px; background: var(--rule); }
+h1.section-title {
+  font-size: 26px; font-weight: 700; letter-spacing: -0.5px;
+  color: var(--ink); margin-bottom: 6px; line-height: 1.25;
+}
+.section-desc { font-size: 14px; color: var(--ink-3); margin-bottom: 32px; max-width: 62ch; }
+.section-break { border: none; height: 1px; background: var(--rule); margin: 60px 0; }
+
+/* ── PART DIVIDER ── */
+.part-divider {
+  background: var(--ink); color: white; border-radius: 10px;
+  padding: 32px 36px; margin: 60px 0 48px;
+}
+.part-divider .part-num { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: oklch(65% 0.18 240); margin-bottom: 10px; }
+.part-divider h2 { font-size: 22px; font-weight: 700; color: white; margin-bottom: 8px; }
+.part-divider p { font-size: 14px; color: oklch(72% 0.06 240); margin: 0; }
+
+/* ── PROSE ── */
+h2 { font-size: 17px; font-weight: 700; color: var(--ink); margin: 36px 0 12px; letter-spacing: -0.3px; }
+h3 { font-size: 14.5px; font-weight: 600; color: var(--ink); margin: 24px 0 8px; }
+p { font-size: 14.5px; line-height: 1.8; margin-bottom: 14px; max-width: 68ch; color: var(--ink); }
+ul, ol { padding-left: 20px; margin-bottom: 16px; }
+li { font-size: 14.5px; line-height: 1.8; margin-bottom: 4px; }
+strong { font-weight: 600; }
+
+/* ── CALLOUTS ── */
+.callout { border-radius: 8px; padding: 16px 20px; margin: 20px 0; font-size: 14px; line-height: 1.75; }
+.callout-title { font-size: 11.5px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px; }
+.info  { background: oklch(96% 0.02 240); border: 1px solid oklch(85% 0.07 240); }
+.info .callout-title  { color: var(--accent); }
+.warn  { background: var(--warn-bg); border: 1px solid oklch(82% 0.10 65); }
+.warn .callout-title  { color: var(--warn); }
+.danger { background: var(--danger-bg); border: 1px solid oklch(82% 0.10 20); }
+.danger .callout-title { color: var(--danger); }
+.ok    { background: var(--ok-bg); border: 1px solid oklch(82% 0.09 148); }
+.ok .callout-title    { color: var(--ok); }
+
+/* ── TABLES ── */
+.table-wrap { overflow-x: auto; margin: 20px 0 28px; border-radius: 8px; border: 1px solid var(--rule); }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+thead th {
+  background: var(--ink); color: white; padding: 11px 14px;
+  text-align: left; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.8px; text-transform: uppercase; white-space: nowrap;
+}
+tbody td { padding: 9px 14px; border-bottom: 1px solid var(--rule); vertical-align: top; color: var(--ink); }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:nth-child(even) td { background: oklch(98% 0.003 240); }
+tbody tr:hover td { background: oklch(96% 0.01 240); }
+td.num, th.num { text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; }
+.total td { background: oklch(94% 0.04 240) !important; font-weight: 700; border-top: 2px solid var(--accent); }
+td.ok-cell { color: var(--ok); font-weight: 600; }
+td.warn-cell { color: var(--warn); font-weight: 600; }
+td.danger-cell { color: var(--danger); font-weight: 600; }
+
+/* ── JOURNAL BOXES ── */
+.jbox {
+  background: var(--surface); border: 1px solid var(--rule);
+  border-top: 3px solid var(--accent); border-radius: 8px;
+  padding: 20px 24px; margin: 16px 0 24px;
+  font-family: 'JetBrains Mono', monospace; font-size: 12.5px;
+}
+.jbox.danger-top { border-top-color: var(--danger); }
+.jbox.ok-top { border-top-color: var(--ok); }
+.jbox.warn-top { border-top-color: var(--warn); }
+.jbox-head { font-family: 'Sora', sans-serif; font-size: 13px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+.jbox.danger-top .jbox-head { color: var(--danger); }
+.jbox.ok-top .jbox-head { color: var(--ok); }
+.jbox.warn-top .jbox-head { color: var(--warn); }
+.jbox-meta {
+  font-family: 'Sora', sans-serif; font-size: 12px; color: var(--ink-3);
+  margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px dashed var(--rule);
+}
+.jbox-cols {
+  display: grid; grid-template-columns: 1fr 110px 110px;
+  font-size: 10.5px; font-weight: 600; color: var(--ink-3);
+  letter-spacing: 0.5px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--rule); margin-bottom: 6px;
+  font-family: 'Sora', sans-serif; text-transform: uppercase;
+}
+.jbox-cols span:not(:first-child), .jrow .dr, .jrow .cr { text-align: right; }
+.jrow { display: grid; grid-template-columns: 1fr 110px 110px; padding: 4px 0; line-height: 1.5; }
+.jrow.sub { padding-left: 22px; color: var(--ink-2); }
+.jrow .dr, .jrow .cr { color: var(--ink); }
+.jbox-note {
+  font-family: 'Sora', sans-serif; font-size: 12px; color: var(--ink-3);
+  margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--rule); line-height: 1.65;
+}
+
+/* ── STEPS ── */
+.tally-steps { counter-reset: step; margin: 20px 0; }
+.tally-step { display: flex; gap: 16px; margin-bottom: 20px; align-items: flex-start; }
+.tally-step::before {
+  counter-increment: step; content: counter(step);
+  flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--accent); color: white; font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; margin-top: 2px;
+}
+.tally-step-body { flex: 1; font-size: 14px; line-height: 1.75; }
+kbd {
+  background: var(--ink); color: white; padding: 1px 7px; border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500;
+}
+code {
+  background: oklch(93% 0.02 240); color: var(--accent); padding: 1px 6px;
+  border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+}
+
+/* ── TERM GRID ── */
+.term-grid { display: flex; flex-direction: column; gap: 2px; margin: 20px 0; }
+.term-row { display: grid; grid-template-columns: 210px 1fr; border-radius: 6px; overflow: hidden; font-size: 13.5px; }
+.term-key {
+  background: var(--ink); color: white; padding: 10px 14px;
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  font-weight: 500; display: flex; align-items: center;
+}
+.term-val { background: var(--surface); border: 1px solid var(--rule); padding: 10px 14px; color: var(--ink); line-height: 1.6; }
+.term-val em { color: var(--accent); font-style: normal; font-weight: 600; }
+@media (max-width: 540px) { .term-row { grid-template-columns: 1fr; } }
+
+/* ── COMPARISON CARDS ── */
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
+@media (max-width: 680px) { .compare-grid { grid-template-columns: 1fr; } }
+.ccard { border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.ccard-bar { height: 5px; }
+.ccard.dtb .ccard-bar  { background: oklch(54% 0.18 260); }
+.ccard.amana .ccard-bar { background: oklch(52% 0.16 150); }
+.ccard-body { padding: 18px 20px; }
+.ccard-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-3); margin-bottom: 4px; }
+.ccard-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; }
+.ccard.dtb .ccard-title { color: oklch(54% 0.18 260); }
+.ccard.amana .ccard-title { color: oklch(52% 0.16 150); }
+.ccard-row { display: flex; justify-content: space-between; font-size: 12.5px; padding: 5px 0; border-bottom: 1px solid var(--rule); gap: 8px; }
+.ccard-row:last-child { border-bottom: none; }
+.ccard-key { color: var(--ink-3); }
+.ccard-val { font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+/* ── BANNER ── */
+.banner { background: var(--ink); color: white; border-radius: 10px; padding: 28px 32px; margin: 32px 0; }
+.banner h3 { color: white; font-size: 16px; margin-bottom: 16px; }
+.banner ul { color: oklch(78% 0.06 240); }
+.banner li { margin-bottom: 6px; font-size: 14px; }
+.banner li strong { color: white; }
+
+/* ── MATH BOX ── */
+.math-box {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 20px 24px; margin: 20px 0; font-family: 'JetBrains Mono', monospace;
+  font-size: 13px; line-height: 2;
+}
+.math-box .label { font-family: 'Sora', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-3); margin-bottom: 10px; }
+.math-box .result { border-top: 1px solid var(--rule); margin-top: 8px; padding-top: 8px; font-weight: 700; color: var(--accent); }
+
+/* ════════════════════════════════════════════════
+   ACCOUNTING AT WORK — ADDITIONAL CSS
+   ════════════════════════════════════════════════ */
+
+/* Journal table with Dr/Cr rows */
+.j-table { width: 100%; border-collapse: collapse; margin: 16px 0 24px; }
+.j-table caption {
+  font-size: 10.5px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--accent); text-align: left; padding-bottom: 8px;
+  font-weight: 700; font-family: 'JetBrains Mono', monospace;
+}
+.j-table thead th {
+  background: var(--ink); color: white; padding: 9px 14px;
+  text-align: left; font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.8px; text-transform: uppercase;
+}
+.j-table tbody td {
+  padding: 8px 14px; border-bottom: 1px solid var(--rule);
+  font-family: 'JetBrains Mono', monospace; font-size: 12.5px;
+  vertical-align: top; color: var(--ink);
+}
+.j-table tbody tr:last-child td { border-bottom: none; }
+.j-table tbody tr:nth-child(even) td { background: oklch(98% 0.003 240); }
+.j-table td.dr { font-weight: 600; color: var(--ink); }
+.j-table td.cr { padding-left: 28px; color: var(--ink-2); }
+.j-table td.amt { text-align: right; }
+.j-table tr.sub td {
+  background: oklch(95% 0.01 240); font-size: 10.5px; letter-spacing: 1.5px;
+  color: var(--accent); padding: 6px 14px; font-family: 'JetBrains Mono', monospace;
+  font-weight: 600; border-bottom: 1px solid var(--rule);
+}
+
+/* Example box */
+.ex-box {
+  background: var(--surface); border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent); border-radius: 8px;
+  padding: 18px 22px; margin: 18px 0;
+}
+.ex-lbl {
+  font-size: 10px; letter-spacing: 2.5px; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; display: block; margin-bottom: 10px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.ex-box ul { list-style: none; padding: 0; margin: 0; }
+.ex-box ul li { padding: 3px 0 3px 14px; position: relative; font-size: 14px; line-height: 1.7; }
+.ex-box ul li::before { content: '•'; color: var(--accent); position: absolute; left: 0; }
+.ex-box p { font-size: 14px; margin-bottom: 10px; }
+
+/* Flow list */
+.flow {
+  list-style: none; background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 8px; padding: 14px 20px; margin: 14px 0;
+}
+.flow li {
+  padding: 3px 0 3px 18px; position: relative;
+  font-size: 14px; font-family: 'JetBrains Mono', monospace;
+}
+.flow li::before { content: '›'; color: var(--accent); position: absolute; left: 0; font-size: 16px; line-height: 1.4; }
+
+/* Calc box */
+.calc {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 12px 18px; margin: 12px 0; font-family: 'JetBrains Mono', monospace;
+  font-size: 14px; color: var(--ok);
+}
+
+/* Formula */
+.formula {
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
+  padding: 16px 22px; margin: 16px 0; font-family: 'JetBrains Mono', monospace;
+  font-size: 14px; text-align: center; letter-spacing: 0.5px; color: var(--ink);
+}
+.formula .fr { display: block; margin-top: 10px; font-size: 1.2rem; color: var(--accent); font-weight: 700; }
+
+/* Explanation list */
+.expl { list-style: none; padding: 0; margin: 8px 0 18px; }
+.expl li { padding: 3px 0 3px 16px; position: relative; font-size: 14px; color: var(--ink-2); }
+.expl li::before { content: '—'; color: var(--accent-2); position: absolute; left: 0; }
+
+/* Key points */
+.kp { list-style: none; padding: 0; margin: 14px 0; display: flex; flex-direction: column; gap: 6px; }
+.kp li { background: var(--surface); border: 1px solid var(--rule); border-left: 3px solid var(--accent-2); padding: 10px 14px; font-size: 14px; border-radius: 6px; }
+
+/* Tip / note box */
+.tip-box {
+  background: var(--warn-bg); border: 1px solid oklch(82% 0.10 65);
+  border-left: 3px solid var(--warn); border-radius: 8px;
+  padding: 14px 18px; margin: 16px 0; font-size: 14px; line-height: 1.75;
+}
+.tip-box .tip-lbl {
+  font-size: 10.5px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--warn); font-weight: 700; display: block; margin-bottom: 6px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Arrow / flow box */
+.arrow-box {
+  background: var(--ink); color: white; border-radius: 8px;
+  padding: 14px 20px; margin: 18px 0; font-size: 14px; line-height: 2;
+}
+.arrow-box .ab-lbl {
+  font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  color: oklch(65% 0.18 240); letter-spacing: 3px; display: block; margin-bottom: 6px;
+}
+
+/* Effect grid */
+.eff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0; }
+.eff-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; font-size: 14px; }
+.eff-lbl {
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--accent); font-weight: 700; display: block; margin-bottom: 6px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.up { color: var(--ok); font-weight: 600; }
+.dn { color: var(--danger); font-weight: 600; }
+.sm-text { color: var(--ink-3); }
+
+/* Stock grid */
+.stk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+.stk-card { border-radius: 8px; padding: 16px 20px; border: 1px solid var(--rule); }
+.stk-card.profit { background: var(--ok-bg); border-left: 4px solid var(--ok); }
+.stk-card.loss   { background: var(--danger-bg); border-left: 4px solid var(--danger); }
+.stk-card h4 { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px; color: var(--ink-3); }
+.stk-row { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 6px; }
+
+/* Key rule / highlight box */
+.key-rule {
+  background: var(--ink); color: white; border-radius: 8px;
+  padding: 20px 28px; margin: 26px 0; font-size: 14px; line-height: 1.8;
+}
+.key-rule::before {
+  content: 'KEY RULE'; font-family: 'JetBrains Mono', monospace;
+  font-size: 10px; letter-spacing: 3px; color: oklch(65% 0.18 240);
+  display: block; margin-bottom: 8px;
+}
+
+/* Steps (for non-tally numbered steps) */
+.steps { display: flex; flex-direction: column; gap: 10px; margin: 18px 0; }
+.step { display: flex; gap: 14px; align-items: flex-start; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 16px; }
+.step-n { font-size: 1.3rem; font-weight: 700; color: var(--accent); line-height: 1; min-width: 26px; }
+.step-b { font-size: 14px; line-height: 1.75; }
+.step-b strong { font-weight: 600; display: block; margin-bottom: 2px; }
+
+@media (max-width: 580px) {
+  .eff-grid, .stk-grid, .compare-grid { grid-template-columns: 1fr; }
+  .main { padding: 40px 20px 80px; }
+  .cover { padding: 60px 28px; }
+}
+</style>
+</head>
+<body>
+
+<button class="no-print" onclick="window.print()">Save as PDF</button>
+
+<!-- ══════════════════════════════════════════════ COVER -->
+<div class="cover">
+  <div class="cover-label">Internal Reference Document</div>
+  <h1>ROE &amp; Exchange Gain/Loss<br><span>+ Accounting at Work</span></h1>
+  <div class="cover-sub">
+    A combined reference covering foreign exchange differences, ROE vouchers in Tally 9, year-end forex clearing — plus withholding tax, salaries, SDL/WCF, profit ratios, prior year adjustments, and closing stock for Tanzania businesses.
+  </div>
+  <div class="cover-stats">
+    <div class="cover-stat">
+      <div class="cover-stat-val">2</div>
+      <div class="cover-stat-label">Forex accounts adjusted</div>
+    </div>
+    <div class="cover-stat">
+      <div class="cover-stat-val">TSH 73,312</div>
+      <div class="cover-stat-label">DTB unrealized forex gain</div>
+    </div>
+    <div class="cover-stat">
+      <div class="cover-stat-val">TSH 41,370</div>
+      <div class="cover-stat-label">Amana rate difference</div>
+    </div>
+    <div class="cover-stat">
+      <div class="cover-stat-val">16</div>
+      <div class="cover-stat-label">Reference sections</div>
+    </div>
+  </div>
+  <div class="cover-footer">
+    <div><strong>Client:</strong> Zulfikar Abdulkadir Yusuf T/A Amaan Glass</div>
+    <div><strong>Financial Year:</strong> 1 January 2025 to 31 December 2025</div>
+    <div><strong>Prepared:</strong> Jay, May 2026</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════ MAIN -->
+<div class="main">
+
+  <!-- TOC -->
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li class="toc-group">Part I — ROE &amp; Foreign Exchange</li>
+      <li><span class="toc-num">01</span><a href="#s1">What is forex gain/loss?</a></li>
+      <li><span class="toc-num">02</span><a href="#s2">What the ROE voucher does</a></li>
+      <li><span class="toc-num">03</span><a href="#s3">The two scenarios in 2025</a></li>
+      <li><span class="toc-num">04</span><a href="#s4">How Tally calculates forex</a></li>
+      <li><span class="toc-num">05</span><a href="#s5">DTB — ROE Voucher + Journal steps</a></li>
+      <li><span class="toc-num">06</span><a href="#s6">Amana — Journal + optional Cash offset</a></li>
+      <li><span class="toc-num">07</span><a href="#s7">Why the entries go that direction</a></li>
+      <li><span class="toc-num">08</span><a href="#s8">Quick-reference terminology</a></li>
+      <li class="toc-group">Part II — Accounting at Work (Tanzania)</li>
+      <li><span class="toc-num">09</span><a href="#s9">Withholding Tax on Rent</a></li>
+      <li><span class="toc-num">10</span><a href="#s10">Withholding Tax on Professional Fees</a></li>
+      <li><span class="toc-num">11</span><a href="#s11">Salaries, Wages &amp; Employer Contributions</a></li>
+      <li><span class="toc-num">12</span><a href="#s12">SDL &amp; WCF Contributions</a></li>
+      <li><span class="toc-num">13</span><a href="#s13">Profit Ratios &amp; Formulas</a></li>
+      <li><span class="toc-num">14</span><a href="#s14">Prior Year Adjustments</a></li>
+      <li><span class="toc-num">15</span><a href="#s15">Tax Credit Written Off</a></li>
+      <li><span class="toc-num">16</span><a href="#s16">Closing Stock &amp; Profit / Loss</a></li>
+    </ol>
+  </div>
+
+  <!-- ══════════════════ PART I DIVIDER ══════════════════ -->
+  <div class="part-divider">
+    <div class="part-num">Part I</div>
+    <h2>ROE &amp; Foreign Exchange Gain / Loss</h2>
+    <p>How forex differences arise, what the ROE voucher does in Tally 9, and how to clear year-end forex balances for DTB Bank USD and Amana Bank USD.</p>
+  </div>
+
+  <!-- ══════════ S1 ══════════ -->
+  <div id="s1">
+    <div class="section-label">Section 01</div>
+    <h1 class="section-title">What is foreign exchange gain/loss?</h1>
+    <p class="section-desc">Why the same amount of USD produces different TZS figures depending on when you transact.</p>
+
+    <p>When your business transacts in USD, every entry is recorded in TZS at the exchange rate on <strong>that specific day</strong>. Because the rate changes constantly, the TZS value of the same USD amount differs from one transaction to the next.</p>
+    <p>Over time, this creates TZS differences that do not represent actual cash — they are purely the result of rate movements. These are called <strong>foreign exchange differences</strong>, and accounting standards require you to recognise them at year-end.</p>
+
+    <h2>Two types of forex difference</h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>When it arises</th>
+            <th>Example</th>
+            <th>Status at year-end</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Realized</strong></td>
+            <td>A transaction is fully COMPLETED — money received and paid at different rates</td>
+            <td>Received USD at 2,600; paid out same USD at 2,500. The 100 TZS/USD difference is locked in.</td>
+            <td>Already happened. Leave it in P&amp;L. No year-end entry needed.</td>
+          </tr>
+          <tr>
+            <td><strong>Unrealized</strong></td>
+            <td>You STILL HOLD foreign currency at year-end, recorded at an old rate</td>
+            <td>You have $307.67 in DTB. It was recorded at blended rate 2,210 but today's rate is 2,450. The gap is unrealized.</td>
+            <td>Must be recognised at year-end via ROE voucher.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout info">
+      <div class="callout-title">Simple analogy</div>
+      Imagine you have a jar of USD coins. Every time you put a coin in or took one out, you wrote down the TZS value at that day's rate. At year-end your jar has $307.67 in it, but the TZS total you wrote down for those coins doesn't match today's value of $307.67.<br><br>
+      <strong>Unrealized gain/loss</strong> = you still have the coins in the jar. Revalue them to today's rate.<br>
+      <strong>Realized gain/loss</strong> = you already spent the coins. The TZS difference is done.
+    </div>
+  </div>
+
+  <hr class="section-break">
+
+  <!-- ══════════ S2 ══════════ -->
+  <div id="s2">
+    <div class="section-label">Section 02</div>
+    <h1 class="section-title">What the ROE voucher does in Tally 9</h1>
+    <p class="section-desc">ROE = Rate of Exchange. A special voucher that revalues a foreign currency ledger without moving any actual cash.</p>
+
+    <p>Throughout the year, every USD transaction is posted at that day's rate. By 31 December, if you have a remaining USD balance, the TZS value in your ledger is a <strong>blended average</strong> of all the different rates used during the year — not today's market rate.</p>
+    <p>The ROE voucher says: <em>"I know the current rate is X. Please update the TZS value of my USD balance to reflect today's rate."</em> No cash moves. Only the TZS representation of the USD balance is adjusted.</p>
+
+    <h2>What Tally does automatically</h2>
+    <div class="math-box">
+      <div class="label">Tally's ROE calculation</div>
+      Unrealized Forex Difference<br>
+      = USD Closing Balance × (Current Rate − Blended Recorded Rate)<br><br>
+      If result is <strong>positive</strong> → Forex GAIN (currency you hold is worth MORE in TZS)<br>
+      If result is <strong>negative</strong> → Forex LOSS (currency you hold is worth LESS in TZS)<br>
+      <div class="result">The offset always goes to: Gain/(Loss) on Exchange ledger</div>
+    </div>
+
+    <div class="callout warn">
+      <div class="callout-title">The ROE voucher only works if you have a remaining USD balance</div>
+      If the actual USD balance is zero, then USD × any rate = TSH 0. There is nothing to revalue. The ROE voucher would produce no adjustment. This is why Amana Bank USD cannot be fixed with an ROE — its actual USD balance is $0. Only Tally ledgers with a non-zero foreign currency balance can use ROE.
+    </div>
+  </div>
+
+  <hr class="section-break">
+
+  <!-- ══════════ S3 ══════════ -->
+  <div id="s3">
+    <div class="section-label">Section 03</div>
+    <h1 class="section-title">The two scenarios in Amaan Glass 2025</h1>
+    <p class="section-desc">Two accounts, two different problems, two different fixes.</p>
+
+    <div class="compare-grid">
+      <div class="ccard dtb">
+        <div class="ccard-bar"></div>
+        <div class="ccard-body">
+          <div class="ccard-label">Scenario A</div>
+          <div class="ccard-title">DTB Bank USD</div>
+          <div class="ccard-row"><span class="ccard-key">Actual USD balance</span><span class="ccard-val">$307.67</span></div>
+          <div class="ccard-row"><span class="ccard-key">TZS at recorded rates</span><span class="ccard-val">680,479.50 Dr</span></div>
+          <div class="ccard-row"><span class="ccard-key">TZS at current rate (2,450)</span><span class="ccard-val">753,791.50 Dr</span></div>
+          <div class="ccard-row"><span class="ccard-key">Forex difference</span><span class="ccard-val">73,312.00 Cr GAIN</span></div>
+          <div class="ccard-row"><span class="ccard-key">Type</span><span class="ccard-val">Unrealized</span></div>
+          <div class="ccard-row"><span class="ccard-key">Fix required</span><span class="ccard-val">ROE + Journal</span></div>
+        </div>
+      </div>
+      <div class="ccard amana">
+        <div class="ccard-bar"></div>
+        <div class="ccard-body">
+          <div class="ccard-label">Scenario B</div>
+          <div class="ccard-title">Amana Bank USD</div>
+          <div class="ccard-row"><span class="ccard-key">Actual USD balance</span><span class="ccard-val">$0.00</span></div>
+          <div class="ccard-row"><span class="ccard-key">TZS book balance</span><span class="ccard-val">41,370.04 Cr</span></div>
+          <div class="ccard-row"><span class="ccard-key">Expected TZS balance</span><span class="ccard-val">0.00</span></div>
+          <div class="ccard-row"><span class="ccard-key">Difference to clear</span><span class="ccard-val">41,370.04 Cr</span></div>
+          <div class="ccard-row"><span class="ccard-key">Type</span><span class="ccard-val">Rate residual</span></div>
+          <div class="ccard-row"><span class="ccard-key">Fix required</span><span class="ccard-val">Journal only</span></div>
+        </div>
+      </div>
+    </div>
+
+    <h2>Why DTB has an unrealized gain</h2>
+    <p>DTB still holds $307.67. Those dollars were recorded at an average (blended) rate that is lower than today's rate of 2,450 TSH/USD. So the TZS value sitting in the ledger (680,479.50) is lower than what those dollars are actually worth today (753,791.50). The gap — TSH 73,312 — is money your books are understating. It is a <strong>gain</strong>.</p>
+
+    <h2>Why Amana has a rate residual instead</h2>
+    <p>Every single dollar that entered the Amana Bank USD account also left it — the account reached exactly $0. But because deposits came in at different TZS rates than the payments went out, the TZS flows did not perfectly cancel. Some deposits were at higher rates (e.g. 2,680), some payments were at lower rates (e.g. 2,450), so the TZS total received exceeded the TZS total paid by <strong>41,370.04</strong>. This is a <strong>realized, accumulated rate difference</strong> sitting as a Cr balance in the ledger.</p>
+
+    <div class="callout info">
+      <div class="callout-title">The rates used across 2025 on Amana Bank USD</div>
+      Transactions were recorded at rates ranging from <strong>2,485</strong> to <strong>2,680</strong> TSH/USD throughout the year. When you receive $1,000 at 2,680 (TSH 2,680,000) and later pay $1,000 at 2,500 (TSH 2,500,000), you have TSH 180,000 more on the credit side than the debit side — even though USD netted to zero. Multiply this effect across hundreds of transactions and you get the 41,370.04 residual.
+    </div>
+  </div>
+
+  <hr class="section-break">
+
+  <!-- ══════════ S4 ══════════ -->
+  <div id="s4">
+    <div class="section-label">Section 04</div>
+    <h1 class="section-title">How Tally calculates the forex gain/loss</h1>
+    <p class="section-desc">Where to find the report and what the numbers mean.</p>
+
+    <p>Tally has a built-in forex report. To view it:</p>
+    <div class="tally-steps">
+      <div class="tally-step">
+        <div class="tally-step-body">Gateway of Tally → <kbd>Trial Balance</kbd> → <kbd>Forex Adjustment</kbd></div>
+      </div>
+      <div class="tally-step">
+        <div class="tally-step-body">Select <kbd>Forex Gain/Loss Statement</kbd></div>
+      </div>
+      <div class="tally-step">
+        <div class="tally-step-body">Click on the ledger name (e.g. <code>DTB BANK USD</code>) to see the breakdown</div>
+      </div>
+    </div>
+
+    <p>The report shows three lines:</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Line</th><th>What it means</th><th>DTB example</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Closing Balance at Transacted Rates</strong></td>
+            <td>TZS value of the USD balance using the blended average rate from all transactions</td>
+            <td class="num">TSH 680,479.50 Dr</td>
+          </tr>
+          <tr>
+            <td><strong>Closing Balance at Current Rates</strong></td>
+            <td>TZS value of the same USD balance using today's (year-end) rate</td>
+            <td class="num">TSH 753,791.50 Dr</td>
+          </tr>
+          <tr>
+            <td><strong>Forex Gain/Loss</strong></td>
+            <td>The difference — this is what needs to be booked via ROE</td>
+            <td class="num">TSH 73,312.00 Cr</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout info">
+      <div class="callout-title">What "Cr" means on the Forex Gain/Loss line</div>
+      A <strong>Cr</strong> forex difference = the current rate is HIGHER than the recorded rate = your USD holdings are worth MORE in TZS today = a <strong>GAIN</strong>.<br>
+      A <strong>Dr</strong> forex difference = the current rate is LOWER than the recorded rate = your USD holdings are worth LESS = a <strong>LOSS</strong>.
+    </div>
+  </div>
+
+  <hr class="section-break">
+
+  <!-- ══════════ S5 ══════════ -->
+  <div id="s5">
+    <div class="section-label">Section 05</div>
+    <h1 class="section-title">DTB Bank USD — ROE Voucher + Journal</h1>
+    <p class="section-desc">Two vouchers are required. The ROE voucher revalues the USD balance at the year-end rate. The Journal then clears the resulting Gain/(Loss) on Exchange balance.</p>
+
+    <div class="callout warn">
+      <div class="callout-title">Complete these in order — ROE first, then Journal</div>
+      The ROE voucher creates the forex adjustment entry automatically. Once saved, the Gain/(Loss) on Exchange ledger will carry a balance of TSH 73,312.00 Cr. The Journal entry in Step 3 then clears that balance. Posting the Journal before the ROE voucher will result in debiting a zero-balance account.
+    </div>
+
+    <h2>Step 1 — Verify the ROE Voucher Type exists in Tally</h2>
+    <p>Before posting, confirm that an ROE voucher type has been configured in this company. If it has been used before, skip to Step 2. If this is the first time, follow the setup below.</p>
+
+    <div class="callout info">
+      <div class="callout-title">How to create the ROE Voucher Type (one-time setup)</div>
+      <strong>1.</strong> Go to <kbd>Gateway of Tally</kbd> → <kbd>Accounts Info</kbd> → <kbd>Voucher Types</kbd> → <kbd>Create</kbd><br><br>
+      <strong>2.</strong> Fill in the following fields:<br>
+      &nbsp;&nbsp;&nbsp;• <strong>Name:</strong> <code>ROE</code><br>
+      &nbsp;&nbsp;&nbsp;• <strong>Type of Voucher:</strong> <code>Journal</code><br>
+      &nbsp;&nbsp;&nbsp;• <strong>Abbreviation:</strong> <code>ROE</code><br>
+      &nbsp;&nbsp;&nbsp;• <strong>Use for forex revaluation:</strong> <code>Yes</code><br>
+      &nbsp;&nbsp;&nbsp;• <strong>Default Voucher Class:</strong> Leave blank or set to <code>ROE</code><br><br>
+      <strong>3.</strong> Save. The ROE voucher type will now appear in the Accounting Vouchers screen and can be accessed via <kbd>F10: Rev Jml</kbd>.<br><br>
+      <strong>Note:</strong> If <kbd>F10: Rev Jml</kbd> does not appear in Accounting Vouchers, go to <kbd>F11: Features</kbd> → <kbd>Accounting Features</kbd> → set <strong>Allow multi-currency</strong> to <code>Yes</code>. Save and re-enter Accounting Vouchers.
+    </div>
+
+    <h2>Step 2 — Post the ROE Voucher</h2>
+    <div class="tally-steps">
+      <div class="tally-step">
+        <div class="tally-step-body">Go to <kbd>Gateway of Tally</kbd> → <kbd>Accounting Vouchers</kbd></div>
+      </div>
+      <div class="tally-step">
+        <div class="tally-step-body">Press <kbd>F10: Rev Jml</kbd>. Tally will prompt for a voucher type — select <code>ROE</code>. The Voucher Class field at the top should display <code>ROE</code>.</div>
+      </div>
+      <div class="tally-step">
+        <div class="tally-step-body">Set the date to <code>31-Dec-2025</code></div>
+      </div>
+      <div class="tally-step">
+        <div class="tally-step-body">In the <strong>Account</strong> field, select: <code>Gain/(Loss) on Exchange</code></div>
+      </div>
+      <div class="tally-step">
+        <div class="tally-step-body">In <strong>Particulars</strong>, select: <code>DTB BANK USD</code>. Tally will prompt for the new exchange rate — enter <code>2,450</code></div>
+      </div>
+      <div class="tally-step">
+        <div class="tally-step-body">Tally automatically calculates the adjustment amount. Verify it shows <strong>TSH 73,312.00</strong> — this should match the Forex Gain/Loss report from Section 4. Save the voucher.</div>
+      </div>
+    </div>
+
+    <p><strong>Result after ROE:</strong> DTB BANK USD ledger is now stated at TSH 753,791.50 Dr — the correct value at the year-end rate of 2,450. Gain/(Loss) on Exchange shows TSH 73,312.00 Cr.</p>
+
+    <h2>Step 3 — Journal Entry to clear Gain/(Loss) on Exchange</h2>
+    <p>The ROE voucher leaves a balance in the Gain/(Loss) on Exchange ledger. A Journal entry is required to transfer this balance to Cash. This is consistent with the treatment applied in the prior year (December 2024 Journal No. 2).</p>
+
+    <div class="jbox warn-top">
+      <div class="jbox-head">Journal — Transfer DTB Forex Gain to Cash</div>
+      <div class="jbox-meta">Voucher Type: Journal (F7) &nbsp;·&nbsp; Date: 31-Dec-2025</div>
+      <div class="jbox-cols"><span>Account</span><span>Dr (TSH)</span><span>Cr (TSH)</span></div>
+      <div class="jrow"><span>Dr &nbsp;Gain/(Loss) on Exchange</span><span class="dr">73,312.00</span><span class="cr">—</span></div>
+      <div class="jrow"><span>Cr &nbsp;Cash</span><span class="dr">—</span><span class="cr">73,312.00</span></div>
+      <div class="jbox-note">
+        This entry zeros the Gain/(Loss) on Exchange ledger and recognises the forex gain as a credit to the Cash account — consistent with the December 2024 year-end treatment where Journal No. 2 carried the same structure: Dr Gain/(Loss) on Exchange / Cr Cash for TSH 5,703,512.78.
+      </div>
+    </div>
+
+    <p><strong>Result after Journal:</strong> Gain/(Loss) on Exchange balance = TSH 0.00. DTB BANK USD is correctly stated at the 31 December 2025 rate. Cash ledger reflects the recognised forex gain.</p>
+  </div>
+
+  <hr class="section-break">
+
+  <!-- ══════════ S6 ══════════ -->
+  <div id="s6">
+    <div class="section-label">Section 06</div>
+    <h1 class="section-title">Amana Bank USD — Journal Entry + Optional Cash Offset</h1>
+    <p class="section-desc">No ROE voucher is needed. The process involves one required journal to clear the bank ledger, followed by an optional second journal to transfer the gain to Cash — mirroring the DTB treatment.</p>
+
+    <div class="callout info">
+      <div class="callout-title">Why no ROE voucher for Amana?</div>
+      The ROE voucher revalues a USD balance at a new rate. The Amana Bank USD account has <strong>$0 USD</strong> remaining — there is nothing to revalue. $0 × any rate = TSH 0. The Cr balance of TSH 41,370.04 is a residual TZS difference from transactions completed at varying rates throughout the year, not from a remaining USD position.
+    </div>
+
+    <h2>Current ledger position</h2>
+    <div class="math-box">
+      <div class="label">Amana Bank USD — position at 31-Dec-2025</div>
+      Actual USD balance at Amana Bank &nbsp;&nbsp; = $0.00<br>
+      TZS book balance in Tally &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = TSH 41,370.04 Cr<br>
+      Expected TZS balance &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = TSH 0.00<br>
+      <div class="result">Residual to clear = TSH 41,370.04 Cr on the Amana Bank USD ledger</div>
+    </div>
+
+    <h2>Entry 1 (Required) — Clear the Amana Bank USD ledger</h2>
+    <p>This entry removes the TZS residual from the bank ledger and parks it temporarily in Gain/(Loss) on Exchange.</p>
+
+    <div class="jbox ok-top">
+      <div class="jbox-head">Journal 1 — Clear Amana Bank USD Rate Residual</div>
+      <div class="jbox-meta">Voucher Type: Journal (F7) &nbsp;·&nbsp; Date: 31-Dec-2025</div>
+      <div class="jbox-cols"><span>Account</span><span>Dr (TSH)</span><span>Cr (TSH)</span></div>
+      <div class="jrow"><span>Dr &nbsp;Amana Bank USD</span><span class="dr">41,370.04</span><span class="cr">—</span></div>
+      <div class="jrow"><span>Cr &nbsp;Gain/(Loss) on Exchange</span><span class="dr">—</span><span class="cr">41,370.04</span></div>
+      <div class="jbox-note">
+        Result: Amana Bank USD ledger TZS balance = TSH 0.00 &nbsp;✓<br>
+        Gain/(Loss) on Exchange now carries TSH 41,370.04 Cr. This may be left here or cleared with Entry 2 below.
+      </div>
+    </div>
+
+    <h2>Entry 2 (Optional) — Transfer the gain to Cash</h2>
+    <p>If the practice is to recognise the forex gain through the Cash account — consistent with the year-end treatment applied to DTB Bank USD — post the following second journal to clear the Gain/(Loss) on Exchange balance.</p>
+
+    <div class="jbox warn-top">
+      <div class="jbox-head">Journal 2 — Transfer Amana Forex Gain to Cash</div>
+      <div class="jbox-meta">Voucher Type: Journal (F7) &nbsp;·&nbsp; Date: 31-Dec-2025</div>
+      <div class="jbox-cols"><span>Account</span><span>Dr (TSH)</span><span>Cr (TSH)</span></div>
+      <div class="jrow"><span>Dr &nbsp;Gain/(Loss) on Exchange</span><span class="dr">41,370.04</span><span class="cr">—</span></div>
+      <div class="jrow"><span>Cr &nbsp;Cash</span><span class="dr">—</span><span class="cr">41,370.04</span></div>
+      <div class="jbox-note">
+        Result: Gain/(Loss) on Exchange balance = TSH 0.00 &nbsp;✓ &nbsp; Cash ledger reflects the recognised forex gain.<br><br>
+        This is optional. If the organisation prefers to carry the gain in Gain/(Loss) on Exchange or transfer it to a dedicated Forex Gain (P&amp;L) ledger instead of Cash, adjust the credit account accordingly. The debit side remains the same regardless.
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-break">
+
+  <!-- ══════════ S7 ══════════ -->
+  <div id="s7">
+    <div class="section-label">Section 07</div>
+    <h1 class="section-title">Why the entries go in that direction</h1>
+    <p class="section-desc">A Cr balance on a ledger is zeroed by adding a Dr. Here is the logic.</p>
+
+    <h2>Understanding Cr and Dr balances on a bank ledger</h2>
+    <p>In Tally's bank ledger view:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Entry type</th><th>Effect on bank ledger</th><th>Real-world meaning</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Credit (Cr)</strong></td><td>Increases the Cr side</td><td>Money received / deposited into the account</td></tr>
+          <tr><td><strong>Debit (Dr)</strong></td><td>Increases the Dr side</td><td>Money paid out / withdrawn from the account</td></tr>
+          <tr><td><strong>Cr closing balance</strong></td><td>Credits &gt; Debits</td><td>The account has a positive TZS balance remaining</td></tr>
+          <tr><td><strong>Dr closing balance</strong></td><td>Debits &gt; Credits</td><td>More went out than came in (overdraft in standard terms)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>To zero a Cr balance — you must add a Debit</h2>
+
+    <div class="callout danger">
+      <div class="callout-title">Common mistake — wrong direction</div>
+      If the ledger shows <strong>Cr 41,370.04</strong> and you post a Credit entry of 41,370.04, the balance becomes <strong>Cr 82,740.08</strong> — it doubles.<br><br>
+      <strong>Cr + Cr = bigger Cr balance. That is the wrong direction.</strong>
+    </div>
+
+    <div class="callout ok">
+      <div class="callout-title">Correct — add a Debit to cancel a Cr balance</div>
+      Cr 41,370.04 (existing) + Dr 41,370.04 (new entry) = <strong>TSH 0</strong><br><br>
+      Debit the bank ledger → reduces the Cr balance → brings it to zero. ✓
+    </div>
+
+    <h2>Why this is not "paying out" money</h2>
+    <p>Debiting a bank account normally means cash leaving. But here, no cash is actually moving — the USD balance is already zero at the actual bank. This Dr entry is purely a <strong>book adjustment</strong> to reconcile the TZS residual left by different exchange rates. The offset (Cr Gain/Loss on Exchange) records that this TZS difference was a forex gain, not a real receipt or payment.</p>
+
+    <div class="banner">
+      <h3>One-line summary of the direction logic</h3>
+      <ul>
+        <li><strong>Cr balance on ledger</strong> → needs a <strong>Dr entry</strong> to zero it → Dr Bank / Cr Gain/Loss on Exchange</li>
+        <li><strong>Dr balance on ledger</strong> → needs a <strong>Cr entry</strong> to zero it → Cr Bank / Dr Gain/Loss on Exchange</li>
+        <li><strong>Adding more Cr to a Cr balance</strong> → always makes it worse → never do this to zero a Cr balance</li>
+      </ul>
+    </div>
+  </div>
+
+  <hr class="section-break">
+
+  <!-- ══════════ S8 ══════════ -->
+  <div id="s8">
+    <div class="section-label">Section 08</div>
+    <h1 class="section-title">Quick-reference terminology</h1>
+    <p class="section-desc">All key terms in one place.</p>
+
+    <div class="term-grid">
+      <div class="term-row">
+        <div class="term-key">ROE Voucher</div>
+        <div class="term-val"><em>Rate of Exchange voucher.</em> A special Tally 9 voucher that revalues a foreign currency ledger at a new exchange rate. Does not move cash — only adjusts TZS representation of the USD balance. Only works when USD balance ≠ 0.</div>
+      </div>
+      <div class="term-row">
+        <div class="term-key">Unrealized Gain/Loss</div>
+        <div class="term-val"><em>Forex difference on balances you still hold.</em> Arises when the current exchange rate differs from the rate at which existing USD holdings were originally recorded. Must be recognised at year-end via ROE.</div>
+      </div>
+      <div class="term-row">
+        <div class="term-key">Realized Gain/Loss</div>
+        <div class="term-val"><em>Forex difference on completed transactions.</em> Arises when you received and paid USD at different rates and the transaction is done. Already in the books — no adjustment needed.</div>
+      </div>
+      <div class="term-row">
+        <div class="term-key">Rate Residual</div>
+        <div class="term-val"><em>TZS difference left after all USD flows cancel to zero.</em> The Amana Bank situation: USD = $0 but TZS ≠ 0 because deposits came in at higher rates than payments went out. Cleared via journal entry.</div>
+      </div>
+      <div class="term-row">
+        <div class="term-key">Gain/(Loss) on Exchange</div>
+        <div class="term-val"><em>The Tally ledger that captures all forex adjustments.</em> It is the automatic offset in ROE vouchers and the other side in forex journal entries. Should be zeroed out by year-end through a journal transfer to P&amp;L or the appropriate account.</div>
+      </div>
+      <div class="term-row">
+        <div class="term-key">Blended Rate</div>
+        <div class="term-val"><em>The weighted average TZS/USD rate across all transactions.</em> Tally uses this internally to calculate the "Closing Balance at Transacted Rates" in the forex report. It is never a single rate — it is the net result of all transactions posted at different rates.</div>
+      </div>
+      <div class="term-row">
+        <div class="term-key">Cr Balance on Bank</div>
+        <div class="term-val"><em>Credits &gt; Debits in the bank ledger.</em> Means more TZS was received (via deposits/receipts) than paid out. To bring to zero: add a <strong>Debit</strong> entry. Adding a Credit would increase it further.</div>
+      </div>
+      <div class="term-row">
+        <div class="term-key">Dr Balance on Bank</div>
+        <div class="term-val"><em>Debits &gt; Credits in the bank ledger.</em> Means more TZS was paid out than received — unusual for a normal bank account. To bring to zero: add a <strong>Credit</strong> entry.</div>
+      </div>
+    </div>
+
+    <h2>Summary action table for 31-Dec-2025</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Account</th>
+            <th>USD Balance</th>
+            <th>TZS Issue</th>
+            <th>Fix</th>
+            <th>Vouchers needed</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>DTB BANK USD</strong></td>
+            <td class="num">$307.67</td>
+            <td>Unrealized forex gain TSH 73,312 Cr</td>
+            <td class="ok-cell">Revalue at 2,450</td>
+            <td>ROE (auto) + Journal</td>
+          </tr>
+          <tr>
+            <td><strong>Amana Bank USD</strong></td>
+            <td class="num">$0.00</td>
+            <td>Rate residual TSH 41,370.04 Cr</td>
+            <td class="ok-cell">Write off residual</td>
+            <td>Journal only</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══════════════════ PART II DIVIDER ══════════════════ -->
+  <div class="part-divider">
+    <div class="part-num">Part II</div>
+    <h2>Accounting at Work — Tanzania Tax Reference</h2>
+    <p>Withholding Tax · Salaries &amp; Wages · SDL &amp; WCF · Profit Ratios · Prior Year Adjustments · Closing Stock</p>
+  </div>
+
+  <!-- ══════════ S9 ══════════ -->
+  <div id="s9">
+    <div class="section-label">Section 09</div>
+    <h1 class="section-title">Withholding Tax on Rent</h1>
+    <p class="section-desc">How the withholder and withholdee roles work, with journal entries.</p>
+
+    <p>Here is a simple rent example showing the <strong>withholder</strong> and the <strong>withholdee</strong>.</p>
+
+    <div class="ex-box">
+      <span class="ex-lbl">Example · Rent Payment with Withholding Tax</span>
+      <p>Suppose a company rents an office building.</p>
+      <ul>
+        <li><strong>Tenant:</strong> ABC Ltd</li>
+        <li><strong>Landlord:</strong> Mr. John</li>
+        <li><strong>Monthly rent:</strong> 1,000,000 TZS</li>
+        <li><strong>Withholding tax on rent:</strong> 10%</li>
+      </ul>
+    </div>
+
+    <h3>Step 1: Calculate Withholding Tax</h3>
+    <div class="calc">10% × 1,000,000 = <strong>100,000 TZS</strong></div>
+
+    <h3>Step 2: Payment Distribution</h3>
+    <ul class="flow">
+      <li><strong>ABC Ltd pays landlord:</strong> 900,000 TZS</li>
+      <li><strong>ABC Ltd sends tax to Tanzania Revenue Authority:</strong> 100,000 TZS</li>
+    </ul>
+
+    <h3>Roles</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Party</th><th>Role</th><th>Explanation</th></tr></thead>
+        <tbody>
+          <tr><td>ABC Ltd (Tenant)</td><td><strong>Withholder</strong></td><td>Deducts tax from rent and sends it to the tax authority</td></tr>
+          <tr><td>Mr. John (Landlord)</td><td><strong>Withholdee</strong></td><td>Receives rent after tax deduction</td></tr>
+          <tr><td>Tanzania Revenue Authority</td><td>Tax Authority</td><td>Receives the withheld tax</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout info">
+      <div class="callout-title">Summary</div>
+      <strong>Withholder:</strong> Tenant (ABC Ltd) &nbsp;·&nbsp; <strong>Withholdee:</strong> Landlord (Mr. John)
+    </div>
+
+    <h3>Journal Entries</h3>
+
+    <table class="j-table">
+      <caption>A — When rent expense is recognised</caption>
+      <thead><tr><th>Account</th><th>Dr (TZS)</th><th>Cr (TZS)</th></tr></thead>
+      <tbody>
+        <tr><td class="dr">Rent Expense</td><td class="amt">1,000,000</td><td class="amt">—</td></tr>
+        <tr><td class="cr">Withholding Tax Payable</td><td class="amt">—</td><td class="amt">100,000</td></tr>
+        <tr><td class="cr">Bank / Cash</td><td class="amt">—</td><td class="amt">900,000</td></tr>
+      </tbody>
+    </table>
+    <ul class="expl">
+      <li><strong>Rent Expense</strong> = full cost of rent</li>
+      <li><strong>Withholding Tax Payable</strong> = tax owed to the Tanzania Revenue Authority</li>
+      <li><strong>Bank</strong> = amount actually paid to the landlord</li>
+    </ul>
+
+    <table class="j-table">
+      <caption>B — When withholding tax is paid to TRA</caption>
+      <thead><tr><th>Account</th><th>Dr (TZS)</th><th>Cr (TZS)</th></tr></thead>
+      <tbody>
+        <tr><td class="dr">Withholding Tax Payable</td><td class="amt">100,000</td><td class="amt">—</td></tr>
+        <tr><td class="cr">Bank / Cash</td><td class="amt">—</td><td class="amt">100,000</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <hr class="section-break">
+
+  <!-- ══════════ S10 ══════════ -->
+  <div id="s10">
+    <div class="section-label">Section 10</div>
+    <h1 class="section-title">Withholding Tax on Professional Fees</h1>
+    <p class="section-desc">When paying for specialised services, the payer must deduct tax before paying the professional.</p>
+
+    <p><strong>Withholding tax on professional fees</strong> means that when a person or company pays for <strong>professional services</strong> (accounting, auditing, legal services, consulting, etc.), they must <strong>deduct a certain percentage of tax before paying the professional</strong> and remit that tax to the government. In Tanzania this tax is administered by the Tanzania Revenue Authority.</p>
+
+    <h3>1 · What are Professional Fees?</h3>
+    <p>Professional fees are payments made for <strong>specialised services provided by professionals</strong>. Examples include fees paid to:</p>
+    <ul class="flow">
+      <li>Accountants</li>
+      <li>Auditors</li>
+      <li>Lawyers</li>
+      <li>Consultants</li>
+      <li>Engineers</li>
+      <li>Architects</li>
+    </ul>
+
+    <h3>2 · How Withholding Works</h3>
+    <div class="tally-steps">
+      <div class="tally-step"><div class="tally-step-body">The <strong>client deducts withholding tax</strong> from the total fee.</div></div>
+      <div class="tally-step"><div class="tally-step-body">The <strong>client pays the remaining amount</strong> to the accountant.</div></div>
+      <div class="tally-step"><div class="tally-step-body">The <strong>deducted tax is sent to the government</strong> through the Tanzania Revenue Authority.</div></div>
+    </div>
+
+    <h3>3 · Example (Accountancy Service)</h3>
+    <div class="ex-box">
+      <span class="ex-lbl">Suppose:</span>
+      <ul>
+        <li>An accountant charges <strong>2,000,000 TZS</strong> for audit services.</li>
+        <li>Withholding tax rate = <strong>5%</strong> (resident professional services).</li>
+      </ul>
+    </div>
+
+    <p><strong>Step 1: Calculate withholding tax</strong></p>
+    <div class="calc">5% × 2,000,000 = <strong>100,000 TZS</strong></div>
+
+    <p><strong>Step 2: Payment</strong></p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th class="num">Amount (TZS)</th></tr></thead>
+        <tbody>
+          <tr><td>Total professional fee</td><td class="num">2,000,000</td></tr>
+          <tr><td>Less: withholding tax (5%)</td><td class="num">100,000</td></tr>
+          <tr><td><strong>Amount paid to accountant</strong></td><td class="num"><strong>1,900,000</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>4 · Roles</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Party</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td>Client paying for services</td><td><strong>Withholder</strong></td></tr>
+          <tr><td>Accountant providing service</td><td><strong>Withholdee</strong></td></tr>
+          <tr><td>Tanzania Revenue Authority</td><td>Receives the tax</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="tip-box">
+      <span class="tip-lbl">Tax Credit — Not an Extra Tax</span>
+      For the accountant, the <strong>withholding tax is not an extra tax</strong>. It is treated as a <strong>tax credit</strong> when they file their annual income tax return with the Tanzania Revenue Authority.
+    </div>
+
+    <div class="arrow-box">
+      <span class="ab-lbl">Simple Idea</span>
+      Professional fee = Payment for expert service → Client deducts tax → Government receives tax → Professional receives remaining amount.
+    </div>
+
+    <h3>Journal Entries for Rent with Withholding Tax</h3>
+    <table class="j-table">
+      <caption>A — Entry when rent expense is recognised</caption>
+      <thead><tr><th>Account</th><th>Dr (TZS)</th><th>Cr (TZS)</th></tr></thead>
+      <tbody>
+        <tr><td class="dr">Rent Expense</td><td class="amt">1,000,000</td><td class="amt">—</td></tr>
+        <tr><td class="cr">Withholding Tax Payable</td><td class="amt">—</td><td class="amt">100,000</td></tr>
+        <tr><td class="cr">Bank / Cash</td><td class="amt">—</td><td class="amt">900,000</td></tr>
+      </tbody>
+    </table>
+
+    <table class="j-table">
+      <caption>B — Entry when withholding tax is paid to TRA</caption>
+      <thead><tr><th>Account</th><th>Dr (TZS)</th><th>Cr (TZS)</th></tr></thead>
+      <tbody>
+        <tr><td class="dr">Withholding Tax Payable</td><td class="amt">100,000</td><td class="amt">—</td></tr>
+        <tr><td class="cr">Bank / Cash</td><td class="amt">—</td><td class="amt">100,000</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Journal Entries for Professional Fees (Accountancy)</h3>
+    <table class="j-table">
+      <caption>A — Entry when professional service expense is recorded</caption>
+      <thead><tr><th>Account</th><th>Dr (TZS)</th><th>Cr (TZS)</th></tr></thead>
+      <tbody>
+        <tr><td class="dr">Professional Fees Expense</td><td class="amt">2,000,000</td><td class="amt">—</td></tr>
+        <tr><td class="cr">Withholding Tax Payable</td><td class="amt">—</td><td class="amt">100,000</td></tr>
+        <tr><td class="cr">Bank / Cash</td><td class="amt">—</td><td class="amt">1,900,000</td></tr>
+      </tbody>
+    </table>
+    <ul class="expl">
+      <li><strong>Professional Fees Expense</strong> = full cost of accounting service</li>
+      <li><strong>Withholding Tax Payable</strong> = tax deducted for the Tanzania Revenue Authority</li>
+      <li><strong>Bank</strong> = amount paid to accountant</li>
+    </ul>
+
+    <table class="j-table">
+      <caption>B — Entry when tax is remitted to TRA</caption>
+      <thead><tr><th>Account</th><th>Dr (TZS)</th><th>Cr (TZS)</th></tr></thead>
+      <tbody>
+        <tr><td class="dr">Withholding Tax Payable</td><td class="amt">100,000</td><td class="amt">—</td></tr>
+        <tr><td class="cr">Bank / Cash</td><td class="amt">—</td><td class="amt">100,000</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Simple Summary</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Transaction</th><th class="num">Expense Recorded (TZS)</th><th class="num">Tax Payable (TZS)</th><th class="num">Cash Paid (TZS)</th></tr></thead>
+        <tbody>
+          <tr><td>Rent</td><td class="num">1,000,000</td><td class="num">100,000</td><td class="num">900,000</td></tr>
+          <tr><td>Professional Fees</td><td class="num">2,000,000</td><td class="num">100,000</td><td class="num">1,900,000</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="key-rule">Always record the <strong>full expense</strong>, then separate the <strong>withholding tax payable</strong> to the Tanzania Revenue Authority.</div>
+  </div>
+
+  <hr class="section-break">
+
+  <!-- ══════════ S11 ══════════ -->
+  <div id="s11">
+    <div class="section-label">Section 11</div>
+    <h1 class="section-title">Salaries, Wages &amp; Employer Contributions</h1>
+    <p class="section-desc">PAYE, NSSF, and the full employer payroll treatment in Tanzania.</p>
+
+    <h3>1 · Components of Salaries and Wages in Tanzania</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Component</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Gross Salary / Wages</strong></td><td>Total remuneration before deductions</td></tr>
+          <tr><td><strong>Pay-As-You-Earn (PAYE) tax</strong></td><td>Income tax withheld and remitted to Tanzania Revenue Authority</td></tr>
+          <tr><td><strong>NSSF contribution</strong></td><td>Social security contribution (mandatory for employees and employers)</td></tr>
+          <tr><td><strong>Other deductions</strong></td><td>e.g. loans, advances, or union fees</td></tr>
+          <tr><td><strong>Net Salary</strong></td><td>Amount actually paid to the employee</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>2 · Example: Salary Payment</h3>
+    <div class="ex-box">
+      <span class="ex-lbl">Suppose:</span>
+      <ul>
+        <li>Gross salary = <strong>2,000,000 TZS</strong></li>
+        <li>PAYE (income tax) = <strong>200,000 TZS</strong> (10%)</li>
+        <li>Employee NSSF contribution = <strong>100,000 TZS</strong></li>
+        <li>Employer NSSF contribution = <strong>100,000 TZS</strong></li>
+        <li>Net salary paid to employee = <strong>1,700,000 TZS</strong></li>
+      </ul>
+    </div>
+
+    <h3>3 · Journal Entries (Employer's Books)</h3>
+
+    <table class="j-table">
+      <caption>A — Record salary expense and deductions</caption>
+      <thead><tr><th>Account</th><th>Dr (TZS)</th><th>Cr (TZS)</th></tr></thead>
+      <tbody>
+        <tr><td class="dr">Salaries &amp; Wages Expense</td><td class="amt">2,100,000</td><td class="amt">—</td></tr>
+        <tr><td class="cr">PAYE Payable</td><td class="amt">—</td><td class="amt">200,000</td></tr>
+        <tr><td class="cr">NSSF Payable (Employee)</td><td class="amt">—</td><td class="amt">100,000</td></tr>
+        <tr><td class="cr">Bank / Cash</td><td class="amt">—</td><td class="amt">1,700,000</td></tr>
+      </tbody>
+    </table>
+    <ul class="expl">
+      <li><strong>Salaries &amp; Wages Expense</strong> includes gross salary + employer NSSF (2,000,000 + 100,000 = 2,100,000)</li>
+      <li><strong>PAYE Payable</strong> = tax deducted from employee's salary</li>
+      <li><strong>NSSF Payable (Employee)</strong> = employee contribution deducted</li>
+      <li><strong>Bank / Cash</strong> = net salary paid to employee</li>
+    </ul>
+
+    <table class="j-table">
+      <caption>B — Record employer NSSF contribution</caption>
+      <thead><tr><th>Account</th><th>Dr (TZS)</th><th>Cr (TZS)</th></tr></thead>
+      <tbody>
+        <tr><td class="dr">Salaries &amp; Wages Expense</td><td class="amt">100,000</td><td class="amt">—</td></tr>
+        <tr><td class="cr">NSSF Payable (Employer)</td><td class="amt">—</td><td class="amt">100,000</td></tr>
+      </tbody>
+    </table>
+    <ul class="expl">
+      <li>Employer's contribution is an <strong>additional expense and liability</strong> until paid to the NSSF fund.</li>
+    </ul>
+
+    <table class="j-table">
+      <caption>C — When deductions are remitted</caption>
+      <thead><tr><th>Account</th><th>Dr (TZS)</th><th>Cr (TZS)</th></tr></thead>
+      <tbody>
+        <tr class="sub"><td colspan="3">PAYE to TRA</td></tr>
+        <tr><td class="dr">PAYE Payable</td><td class="amt">200,000</td><td class="amt">—</td></tr>
+        <tr><td class="cr">Bank / Cash</td><td class="amt">—</td><td class="amt">200,000</td></tr>
+        <tr class="sub"><td colspan="3">NSSF contributions to NSSF Fund</td></tr>
+        <tr><td class="dr">NSSF Payable (Employee)</td><td class="amt">100,000</td><td class="amt">—</td></tr>
+        <tr><td class="dr">NSSF Payable (Employer)</td><td class="amt">100,000</td><td class="amt">—</td></tr>
+        <tr><td class="cr">Bank / Cash</td><td class="amt">—</td><td class="amt">200,000</td></tr>
+      </tbody>
+    </table>
+
+    <h3>4 · Summary Table</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th class="num">Amount (TZS)</th><th>Accounting Treatment</th></tr></thead>
+        <tbody>
+          <tr><td>Gross Salary</td><td class="num">2,000,000</td><td>Debit expense</td></tr>
+          <tr><td>Employer NSSF</td><td class="num">100,000</td><td>Debit expense / Credit NSSF payable</td></tr>
+          <tr><td>PAYE</td><td class="num">200,000</td><td>Credit PAYE payable</td></tr>
+          <tr><td>Employee NSSF</td><td class="num">100,000</td><td>Credit NSSF payable</td></tr>
+          <tr><td>Net Salary Paid</td><td class="num">1,700,000</td><td>Credit Bank / Cash</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <ul class="kp">
+      <li><strong>Gross salary + employer contributions = total salary expense</strong></li>
+      <li><strong>Employee deductions</strong> (PAYE &amp; NSSF) are liabilities until remitted</li>
+      <li><strong>Net salary</strong> is the cash actually paid</li>
+      <li>Always remit taxes and contributions <strong>on time</strong> to avoid penalties</li>
+    </ul>
+  </div>
+
+  <hr class="section-break">
+
+  <!-- ══════════ S12 ══════════ -->
+  <div id="s12">
+    <div class="section-label">Section 12</div>
+    <h1 class="section-title">SDL &amp; WCF Contributions</h1>
+    <p class="section-desc">Skills Development Levy and Workers' Compensation Fund — employer-only costs that increase total payroll expense.</p>
+
+    <h3>1 · Understanding SDL and WCF</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Charge</th><th>Who Pays</th><th>Rate / Notes</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><strong>SDL – Skills &amp; Development Levy</strong></td><td>Employer</td><td>4% of total monthly emoluments</td><td>Funds employee training programs</td></tr>
+          <tr><td><strong>WCF – Workers' Compensation Fund</strong></td><td>Employer</td><td>1% of total monthly emoluments (mandatory)</td><td>Provides compensation for work-related injuries</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="tip-box">
+      <span class="tip-lbl">Note</span>
+      Both are <strong>employer liabilities</strong>, not deducted from the employee's salary. They <strong>increase total salary cost</strong>.
+    </div>
+
+    <h3>2 · Example: Salary + SDL + WCF</h3>
+    <div class="ex-box">
+      <span class="ex-lbl">Assume the following:</span>
+      <ul>
+        <li>Gross salary = <strong>2,000,000 TZS</strong></li>
+        <li>PAYE = <strong>200,000 TZS</strong></li>
+        <li>Employee NSSF = <strong>100,000 TZS</strong></li>
+        <li>Employer NSSF = <strong>100,000 TZS</strong></li>
+        <li>SDL = 4% × 2,000,000 = <strong>80,000 TZS</strong></li>
+        <li>WCF = 1% × 2,000,000 = <strong>20,000 TZS</strong></li>
+        <li>Net salary = <strong>1,700,000 TZS</strong></li>
+      </ul>
+    </div>
+
+    <h3>3 · Journal Entries for Employer</h3>
+
+    <table class="j-table">
+      <caption>A — Record salary expense and deductions</caption>
+      <thead><tr><th>Account</th><th>Dr (TZS)</th><th>Cr (TZS)</th></tr></thead>
+      <tbody>
+        <tr><td class="dr">Salaries &amp; Wages Expense</td><td class="amt">2,300,000</td><td class="amt">—</td></tr>
+        <tr><td class="cr">PAYE Payable</td><td class="amt">—</td><td class="amt">200,000</td></tr>
+        <tr><td class="cr">NSSF Payable (Employee)</td><td class="amt">—</td><td class="amt">100,000</td></tr>
+        <tr><td class="cr">Bank / Cash</td><td class="amt">—</td><td class="amt">1,700,000</td></tr>
+      </tbody>
+    </table>
+
+    <table class="j-table">
+      <caption>B — Record employer contributions (NSSF, SDL, WCF)</caption>
+      <thead><tr><th>Account</th><th>Dr (TZS)</th><th>Cr (TZS)</th></tr></thead>
+      <tbody>
+        <tr><td class="dr">Salaries &amp; Wages Expense</td><td class="amt">200,000</td><td class="amt">—</td></tr>
+        <tr><td class="cr">NSSF Payable (Employer)</td><td class="amt">—</td><td class="amt">100,000</td></tr>
+        <tr><td class="cr">SDL Payable</td><td class="amt">—</td><td class="amt">80,000</td></tr>
+        <tr><td class="cr">WCF Payable</td><td class="amt">—</td><td class="amt">20,000</td></tr>
+      </tbody>
+    </table>
+
+    <table class="j-table">
+      <caption>C — When remitting to authorities</caption>
+      <thead><tr><th>Account</th><th>Dr (TZS)</th><th>Cr (TZS)</th></tr></thead>
+      <tbody>
+        <tr class="sub"><td colspan="3">PAYE to TRA</td></tr>
+        <tr><td class="dr">PAYE Payable</td><td class="amt">200,000</td><td class="amt">—</td></tr>
+        <tr><td class="cr">Bank / Cash</td><td class="amt">—</td><td class="amt">200,000</td></tr>
+        <tr class="sub"><td colspan="3">NSSF, SDL &amp; WCF contributions</td></tr>
+        <tr><td class="dr">NSSF Payable (Employee)</td><td class="amt">100,000</td><td class="amt">—</td></tr>
+        <tr><td class="dr">NSSF Payable (Employer)</td><td class="amt">100,000</td><td class="amt">—</td></tr>
+        <tr><td class="dr">SDL Payable</td><td class="amt">80,000</td><td class="amt">—</td></tr>
+        <tr><td class="dr">WCF Payable</td><td class="amt">20,000</td><td class="amt">—</td></tr>
+        <tr><td class="cr">Bank / Cash</td><td class="amt">—</td><td class="amt">300,000</td></tr>
+      </tbody>
+    </table>
+
+    <h3>4 · Summary Table</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th class="num">Amount (TZS)</th><th>Accounting Treatment</th></tr></thead>
+        <tbody>
+          <tr><td>Gross Salary</td><td class="num">2,000,000</td><td>Debit expense</td></tr>
+          <tr><td>Employee NSSF</td><td class="num">100,000</td><td>Credit NSSF payable</td></tr>
+          <tr><td>Employer NSSF</td><td class="num">100,000</td><td>Debit expense / Credit payable</td></tr>
+          <tr><td>PAYE</td><td class="num">200,000</td><td>Credit PAYE payable</td></tr>
+          <tr><td>SDL</td><td class="num">80,000</td><td>Debit expense / Credit payable</td></tr>
+          <tr><td>WCF</td><td class="num">20,000</td><td>Debit expense / Credit payable</td></tr>
+          <tr><td>Net Salary Paid</td><td class="num">1,700,000</td><td>Credit Bank / Cash</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <ul class="kp">
+      <li><strong>SDL &amp; WCF are employer-only contributions</strong>; they do <strong>not reduce net salary</strong>.</li>
+      <li>They are <strong>part of total salary cost</strong>, so accounting for them separately helps in reporting.</li>
+      <li>Always <strong>remit SDL to TRA</strong> and <strong>WCF to WCF authority</strong> on time.</li>
+    </ul>
+  </div>
+
+  <hr class="section-break">
+
+  <!-- ══════════ S13 ══════════ -->
+  <div id="s13">
+    <div class="section-label">Section 13</div>
+    <h1 class="section-title">Profit Ratios &amp; Formulas</h1>
+    <p class="section-desc">Gross profit margin, cost of sales ratio, and markup percentage explained.</p>
+
+    <h3>Gross Profit / Revenue × 100</h3>
+    <p>This formula calculates the <strong>Gross Profit Margin</strong> (percentage) — how much profit a business keeps from sales after covering the direct cost of producing goods or services.</p>
+    <ul class="expl">
+      <li><strong>Gross Profit</strong> = Revenue − Cost of Goods Sold (COGS)</li>
+      <li><strong>Revenue</strong> = Total sales before expenses</li>
+    </ul>
+    <div class="ex-box">
+      <span class="ex-lbl">Example</span>
+      <ul>
+        <li>Revenue = <strong>10,000 TZS</strong></li>
+        <li>Cost of Goods Sold = <strong>6,000 TZS</strong></li>
+        <li>Gross Profit = <strong>4,000 TZS</strong></li>
+      </ul>
+    </div>
+    <div class="formula">4,000 ÷ 10,000 × 100<span class="fr">Gross Profit Margin = <strong>40%</strong></span></div>
+    <p>This means the business keeps <strong>40% of its sales as gross profit</strong> before operating expenses.</p>
+
+    <h3>Cost of Sales / Revenue × 100</h3>
+    <p>This formula calculates the <strong>Cost of Sales Ratio</strong> — how much of the revenue is spent on producing or buying the products sold.</p>
+    <ul class="expl">
+      <li><strong>Cost of Sales (COGS)</strong> = Direct costs used to produce or purchase the goods/services sold.</li>
+      <li><strong>Revenue</strong> = Total sales generated.</li>
+    </ul>
+    <div class="formula">6,000 ÷ 10,000 × 100<span class="fr">Cost of Sales Ratio = <strong>60%</strong></span></div>
+
+    <div class="tip-box">
+      <span class="tip-lbl">Note</span>
+      If <strong>Cost of Sales = 60%</strong>, then <strong>Gross Profit Margin = 40%</strong>, since:<br>
+      <strong>Gross Profit Margin + Cost of Sales Ratio = 100%</strong>
+    </div>
+
+    <h3>Gross Profit / Cost of Sales × 100</h3>
+    <p>This formula calculates the <strong>Markup Percentage</strong> — how much profit is added on top of the cost of a product.</p>
+    <div class="formula">4,000 ÷ 6,000 × 100<span class="fr">Markup = <strong>66.67%</strong></span></div>
+
+    <div class="callout info">
+      <div class="callout-title">Important difference</div>
+      <strong>Markup Percentage</strong> = Profit based on <strong>cost</strong><br>
+      <strong>Gross Profit Margin</strong> = Profit based on <strong>revenue</strong><br><br>
+      From the example: Markup = <strong>66.67%</strong> &nbsp;·&nbsp; Gross Profit Margin = <strong>40%</strong>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Formula</th><th>Based On</th><th class="num">Result</th></tr></thead>
+        <tbody>
+          <tr><td>Gross Profit Margin</td><td>Revenue</td><td class="num">40%</td></tr>
+          <tr><td>Cost of Sales Ratio</td><td>Revenue</td><td class="num">60%</td></tr>
+          <tr><td>Markup Percentage</td><td>Cost of Sales</td><td class="num">66.67%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <hr class="section-break">
+
+  <!-- ══════════ S14 ══════════ -->
+  <div id="s14">
+    <div class="section-label">Section 14</div>
+    <h1 class="section-title">Prior Year Adjustments</h1>
+    <p class="section-desc">Amounts disallowed by TRA after a tax audit and their effect on Assets, Liabilities, and Capital.</p>
+
+    <p>Prior year adjustments are <strong>amounts disallowed by the Tanzania Revenue Authority after a tax audit</strong>. These adjustments correct errors or overstatements made in previous financial periods.</p>
+    <p>The accounting equation is: <strong>Assets = Capital + Liabilities</strong></p>
+
+    <h3>A) Example: Disallowed Creditors</h3>
+    <div class="ex-box">
+      <span class="ex-lbl">Scenario</span>
+      <p>The Tanzania Revenue Authority disallows <strong>TZS 50,000,000 of creditors</strong>. The business recorded payables that are <strong>not valid</strong>, so <strong>Liabilities (Creditors) decrease</strong>.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step"><div class="step-n">1</div><div class="step-b"><strong>What changes?</strong> <span class="dn">Creditors (Liabilities) ↓ by 50,000,000</span></div></div>
+      <div class="step"><div class="step-n">2</div><div class="step-b"><strong>Apply accounting equation</strong> — Assets = Capital + Liabilities. If liabilities decrease and assets stay the same → <strong>Capital must increase</strong></div></div>
+      <div class="step"><div class="step-n">3</div><div class="step-b"><strong>Why capital increases</strong> — The business previously recorded an expense now rejected → expenses were overstated → profit was actually higher → <span class="up">retained earnings (capital) increases</span></div></div>
+    </div>
+
+    <div class="eff-grid">
+      <div class="eff-card"><span class="eff-lbl">Liabilities</span><span class="dn">Creditors ↓ (reduced)</span></div>
+      <div class="eff-card"><span class="eff-lbl">Capital</span><span class="up">Equity ↑ (increased)</span></div>
+      <div class="eff-card"><span class="eff-lbl">Assets</span><span class="sm-text">No change</span></div>
+      <div class="eff-card"><span class="eff-lbl">Reason</span>Expenses were overstated</div>
+    </div>
+
+    <h3>B) Example: Disallowed Debtors</h3>
+    <div class="ex-box">
+      <span class="ex-lbl">Scenario</span>
+      <p>The Tanzania Revenue Authority disallows <strong>TZS 50,000,000 of debtors</strong>. The business recorded receivables that are <strong>not valid</strong>, so <strong>Assets (Debtors) decrease</strong>.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step"><div class="step-n">1</div><div class="step-b"><strong>What changes?</strong> <span class="dn">Debtors (Assets) ↓ by 50,000,000</span></div></div>
+      <div class="step"><div class="step-n">2</div><div class="step-b"><strong>Apply accounting equation</strong> — Assets = Capital + Liabilities. If assets decrease and liabilities stay the same → <strong>Capital must also decrease</strong></div></div>
+      <div class="step"><div class="step-n">3</div><div class="step-b"><strong>Why capital decreases</strong> — The business previously recognised income now rejected → profit was overstated → must <span class="dn">reduce retained earnings (capital)</span></div></div>
+    </div>
+
+    <div class="eff-grid">
+      <div class="eff-card"><span class="eff-lbl">Assets</span><span class="dn">Debtors ↓ (reduced)</span></div>
+      <div class="eff-card"><span class="eff-lbl">Capital</span><span class="dn">Equity ↓ (reduced)</span></div>
+      <div class="eff-card"><span class="eff-lbl">Liabilities</span><span class="sm-text">No change</span></div>
+      <div class="eff-card"><span class="eff-lbl">Reason</span>Income was overstated</div>
+    </div>
+
+    <h3>C) Example: Understated Closing Stock (Prior Year)</h3>
+    <div class="ex-box">
+      <span class="ex-lbl">Scenario</span>
+      <p>During an audit by the Tanzania Revenue Authority, it is discovered that <strong>closing stock was understated by TZS 40,000,000</strong> in the prior year.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step"><div class="step-n">1</div><div class="step-b"><strong>What changes?</strong> — Closing stock is an Asset. If understated → it should have been higher → <span class="up">Assets (Inventory) ↑ by 40,000,000</span></div></div>
+      <div class="step"><div class="step-n">2</div><div class="step-b"><strong>Apply accounting equation</strong> — Assets = Capital + Liabilities. If assets increase and liabilities stay the same → <strong>Capital must increase</strong></div></div>
+      <div class="step"><div class="step-n">3</div><div class="step-b"><strong>Why capital increases</strong> — Understated stock → cost of sales was overstated → profit was understated → <span class="up">retained earnings (capital) increases</span></div></div>
+    </div>
+
+    <div class="eff-grid">
+      <div class="eff-card"><span class="eff-lbl">Assets</span><span class="up">Inventory ↑ (increases)</span></div>
+      <div class="eff-card"><span class="eff-lbl">Capital</span><span class="up">Equity ↑ (increases)</span></div>
+      <div class="eff-card"><span class="eff-lbl">Liabilities</span><span class="sm-text">No change</span></div>
+      <div class="eff-card"><span class="eff-lbl">Reason</span>Profit was understated</div>
+    </div>
+
+    <h3>Summary</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item Issue</th><th>Asset / Liability Effect</th><th>Capital Effect</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td>Creditors disallowed</td><td>Liabilities ↓</td><td class="ok-cell">Capital ↑</td><td>Expenses overstated</td></tr>
+          <tr><td>Debtors disallowed</td><td>Assets ↓</td><td class="danger-cell">Capital ↓</td><td>Income overstated</td></tr>
+          <tr><td>Stock understated</td><td>Assets ↑</td><td class="ok-cell">Capital ↑</td><td>Profit understated</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <hr class="section-break">
+
+  <!-- ══════════ S15 ══════════ -->
+  <div id="s15">
+    <div class="section-label">Section 15</div>
+    <h1 class="section-title">Tax Credit Written Off due to TRA Assessment</h1>
+    <p class="section-desc">When TRA disallows previously recognised tax recoverable balances.</p>
+
+    <p>Tax credit written off occurs when the Tanzania Revenue Authority <strong>disallows previously recognised tax recoverable balances</strong>. Tax recoverable is treated as an <strong>asset</strong>, representing amounts expected to be refunded.</p>
+
+    <h3>Accounting Treatment</h3>
+    <ul class="kp">
+      <li><strong>Opening balance</strong> — Represents tax credit brought forward</li>
+      <li><strong>Tax credit written off</strong> — Occurs when TRA disallows prior claims: reduces assets (tax recoverable) and reduces capital (equity)</li>
+      <li><strong>Tax recoverable for the year</strong> — New tax credit generated in the current year: increases assets and increases capital</li>
+      <li><strong>Closing balance</strong> — Carried forward to the next year</li>
+    </ul>
+
+    <h3>Key Principle</h3>
+    <div class="eff-grid">
+      <div class="eff-card"><span class="eff-lbl">Tax recoverable</span>= <strong>Asset</strong></div>
+      <div class="eff-card"><span class="eff-lbl">Write-off</span><span class="dn">Asset ↓ → Capital ↓</span></div>
+      <div class="eff-card"><span class="eff-lbl">New tax credit</span><span class="up">Asset ↑ → Capital ↑</span></div>
+      <div class="eff-card"><span class="eff-lbl">Nature</span>Always affects both Asset and Capital equally</div>
+    </div>
+
+    <h3>Flow Formula</h3>
+    <div class="math-box">
+      <div class="label">Tax Recoverable Movement</div>
+      Closing balance = Opening balance − Write-off + Current year tax credit
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Event</th><th>Asset (Tax Recoverable)</th><th>Capital</th></tr></thead>
+        <tbody>
+          <tr><td>Tax credit written off</td><td class="danger-cell">↓ Decreases</td><td class="danger-cell">↓ Decreases</td></tr>
+          <tr><td>New tax credit for the year</td><td class="ok-cell">↑ Increases</td><td class="ok-cell">↑ Increases</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <hr class="section-break">
+
+  <!-- ══════════ S16 ══════════ -->
+  <div id="s16">
+    <div class="section-label">Section 16</div>
+    <h1 class="section-title">Closing Stock &amp; Profit / Loss</h1>
+    <p class="section-desc">How closing stock directly affects Cost of Goods Sold and the profit or loss figure.</p>
+
+    <p>Closing stock directly affects <strong>Cost of Goods Sold (COGS)</strong> and therefore impacts the profit or loss figure.</p>
+
+    <div class="stk-grid">
+      <div class="stk-card profit">
+        <h4>Effect on Profit</h4>
+        <div class="stk-row"><span class="up" style="font-size:20px;">↑</span> Closing Stock increases → <strong class="up">Profit ↑</strong></div>
+        <div class="stk-row"><span class="dn" style="font-size:20px;">↓</span> Closing Stock decreases → <strong class="dn">Profit ↓</strong></div>
+      </div>
+      <div class="stk-card loss">
+        <h4>Effect on Loss</h4>
+        <div class="stk-row"><span class="up" style="font-size:20px;">↑</span> Closing Stock increases → <strong class="up">Loss ↓</strong></div>
+        <div class="stk-row"><span class="dn" style="font-size:20px;">↓</span> Closing Stock decreases → <strong class="dn">Loss ↑</strong></div>
+      </div>
+    </div>
+
+    <div class="key-rule">
+      Remember:<br>
+      Closing stock ↑ → COGS ↓ → Better results<br>
+      Closing stock ↓ → COGS ↑ → Worse results
+    </div>
+
+    <h3>Why closing stock affects profit</h3>
+    <div class="math-box">
+      <div class="label">COGS Formula</div>
+      COGS = Opening Stock + Purchases − Closing Stock<br><br>
+      Gross Profit = Revenue − COGS<br>
+      <div class="result">Higher closing stock → Lower COGS → Higher Gross Profit</div>
+    </div>
+
+    <div class="callout info">
+      <div class="callout-title">Practical implication</div>
+      If at year-end you count more stock than your records show, COGS decreases and profit increases — which also means a higher tax liability. If stock is understated, COGS is overstated, profit is understated, and TRA may raise a prior year adjustment (see Section 14C).
+    </div>
+  </div>
+
+</div><!-- /main -->
+</body>
+</html>

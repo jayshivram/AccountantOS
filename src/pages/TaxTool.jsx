@@ -28,7 +28,7 @@ function formatMoney(str) {
   if (parts.length > 1) {
     // preserve trailing dot + up to 2 decimal digits
     result = intPart + '.' + parts[1].slice(0, 2);
-  } else if (str.endsWith('.')) {
+  } else if (s.endsWith('.')) {
     result = intPart + '.';
   } else {
     result = intPart;
@@ -150,14 +150,13 @@ async function exportToPng(ref, filename) {
   });
 }
 
-async function exportToPdf(ref, filename) {
-  const html2canvas = (await import('html2canvas')).default;
-  const { jsPDF } = await import('jspdf');
-  const canvas = await html2canvas(ref.current, { scale: 2, useCORS: true, backgroundColor: null });
-  const imgData = canvas.toDataURL('image/png');
-  const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: [canvas.width / 2, canvas.height / 2] });
-  pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2);
-  pdf.save(filename + '.pdf');
+function exportToPdf(htmlContent, title) {
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><style>@page{size:A5 portrait;margin:12mm;}body{font-family:Arial,sans-serif;margin:0;color:#111827;font-size:11px;}h2{margin:0 0 3px;font-size:13px;}p.sub{margin:0 0 10px;font-size:10px;color:#6b7280;}.section-title{font-size:9px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;font-weight:600;margin:10px 0 4px;}.row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e5e7eb;font-size:11px;}.row.bold{font-weight:700;border-bottom:2px solid #d1d5db;}.row.net{background:#f0fdf4;padding:6px 8px;border-radius:4px;border-bottom:none;margin:6px 0;font-weight:700;font-size:12px;color:#15803d;}</style></head><body>${htmlContent}</body></html>`;
+  const w = window.open('', '_blank', 'width=500,height=600');
+  if (!w) return;
+  w.document.write(html);
+  w.document.close();
+  w.onload = () => { w.focus(); w.print(); };
 }
 
 // ─── VAT Section ──────────────────────────────────────────────────────────────
@@ -427,11 +426,16 @@ function WHTSection({ taxRates }) {
 const EMP_TABS = ['PAYE', 'NSSF', 'SDL', 'WCF'];
 
 function PayslipSection({ taxRates }) {
-  const [basic, onBasic, basicN] = useMoneyInput('500,000');
-  const [transport, onTransport, transportN] = useMoneyInput('100,000');
+  const [company, setCompany] = useState('');
+  const [empName, setEmpName] = useState('');
+  const [basic, onBasic, basicN] = useMoneyInput('');
+  const [transport, onTransport, transportN] = useMoneyInput('');
   const [food, onFood, foodN] = useMoneyInput('');
   const [housing, onHousing, housingN] = useMoneyInput('');
-  const [other, onOther, otherN] = useMoneyInput('');
+  const [cashInLieu, onCashInLieu, cashInLieuN] = useMoneyInput('');
+  const [overtime, onOvertime, overtimeN] = useMoneyInput('');
+  const [salaryAdvance, onSalaryAdvance, salaryAdvanceN] = useMoneyInput('');
+  const [loan, onLoan, loanN] = useMoneyInput('');
   const [month, setMonth] = useState(format(new Date(), 'MMMM yyyy'));
   const [res, setRes] = useState(null);
   const [flash, setFlash] = useState(false);
@@ -440,24 +444,68 @@ function PayslipSection({ taxRates }) {
 
   function handleCalculate() {
     if (!basicN) { alert('Please enter Basic Salary.'); return; }
-    const gross = basicN + transportN + foodN + housingN + otherN;
-    const { nssfEmployee, taxableIncome, paye, netPay } = calcPaye(gross, taxRates.PAYE_BANDS, taxRates.NSSF_EMPLOYEE);
+    const gross = basicN + transportN + foodN + housingN + cashInLieuN + overtimeN;
+    const { nssfEmployee, taxableIncome, paye, netPay: baseNet } = calcPaye(gross, taxRates.PAYE_BANDS, taxRates.NSSF_EMPLOYEE);
+    const totalDeductions = nssfEmployee + paye + salaryAdvanceN + loanN;
+    const netPay = gross - totalDeductions;
     const nssfEmployer = gross * taxRates.NSSF_EMPLOYER;
     const sdl = gross * taxRates.SDL;
     const wcf = gross * taxRates.WCF;
-    const totalCTC = gross + nssfEmployer + sdl + wcf;
-    setRes({ gross, nssfEmployee, taxableIncome, paye, netPay, nssfEmployer, sdl, wcf, totalCTC, month, basicN, transportN, foodN, housingN, otherN });
+    const totalCTC = gross + nssfEmployer + wcf;
+    setRes({ gross, nssfEmployee, taxableIncome, paye, netPay, totalDeductions, nssfEmployer, sdl, wcf, totalCTC, month, company, empName, basicN, transportN, foodN, housingN, cashInLieuN, overtimeN, salaryAdvanceN, loanN });
     setFlash(true);
     setTimeout(() => setFlash(false), 700);
     setTimeout(() => voucherRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
   }
+
+  const dash = v => v > 0 ? fmtN(v) : '-';
 
   async function handleExport(type) {
     setExporting(true);
     try {
       const fname = `Payslip_${res.month.replace(' ', '_')}`;
       if (type === 'png') await exportToPng(voucherRef, fname);
-      else await exportToPdf(voucherRef, fname);
+      else {
+        const html = `
+          ${res.company ? `<p style="text-align:center;font-weight:700;font-size:13px;margin-bottom:4px;">${res.company}</p>` : ''}
+          <h2 style="text-align:center;">SALARY VOUCHER</h2>
+          <p style="text-align:center;margin-bottom:12px;">MONTH OF ${res.month.toUpperCase()}</p>
+          ${res.empName ? `<p style="margin-bottom:8px;"><strong>NAME:</strong> ${res.empName}</p>` : ''}
+          <table>
+            <tbody>
+              <tr><td>BASIC SALARY</td><td class="num">${fmtN(res.basicN)}</td></tr>
+              <tr><td>TRANSPORT ALLOWANCE</td><td class="num">${dash(res.transportN)}</td></tr>
+              <tr><td>FOOD ALLOWANCE</td><td class="num">${dash(res.foodN)}</td></tr>
+              <tr><td>HOUSING ALLOWANCE</td><td class="num">${dash(res.housingN)}</td></tr>
+              <tr><td>CASH IN LIEU OF LEAVE</td><td class="num">${dash(res.cashInLieuN)}</td></tr>
+              <tr><td>OVERTIME</td><td class="num">${dash(res.overtimeN)}</td></tr>
+              <tr class="total"><td>TOTAL EARNINGS</td><td class="num">${fmtN(res.gross)}</td></tr>
+              <tr class="spacer"><td colspan="2"></td></tr>
+              <tr><td>TAXABLE PAY</td><td class="num">${fmtN(res.taxableIncome)}</td></tr>
+              <tr class="spacer"><td colspan="2"></td></tr>
+              <tr class="section-hdr"><td colspan="2">DEDUCTION</td></tr>
+              <tr><td>P.A.Y.E</td><td class="num">${fmtN(res.paye)}</td></tr>
+              <tr><td>Less Relief</td><td class="num">-</td></tr>
+              <tr><td>N.S.S.F</td><td class="num">${fmtN(res.nssfEmployee)}</td></tr>
+              <tr><td>Salary Advance</td><td class="num">${dash(res.salaryAdvanceN)}</td></tr>
+              <tr><td>Loan</td><td class="num">${dash(res.loanN)}</td></tr>
+              <tr class="total"><td>TOTAL DEDUCTIONS</td><td class="num">${fmtN(res.totalDeductions)}</td></tr>
+              <tr class="net"><td>NET PAY</td><td class="num">${fmtN(res.netPay)}</td></tr>
+              <tr class="spacer"><td colspan="2"></td></tr>
+              <tr class="section-hdr"><td colspan="2">COST TO COMPANY</td></tr>
+              <tr><td>Gross Pay</td><td class="num">${fmtN(res.gross)}</td></tr>
+              <tr><td>NSSF Employer (${(taxRates.NSSF_EMPLOYER*100).toFixed(0)}%)</td><td class="num">${fmtN(res.nssfEmployer)}</td></tr>
+              <tr><td>WCF (${(taxRates.WCF*100).toFixed(1)}%)</td><td class="num">${fmtN(res.wcf)}</td></tr>
+              <tr class="ctc"><td>TOTAL CTC</td><td class="num">${fmtN(res.totalCTC)}</td></tr>
+            </tbody>
+          </table>`;
+        const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${fname}</title><style>@page{size:A5 portrait;margin:15mm;}body{font-family:Arial,sans-serif;color:#111;font-size:11px;margin:0;}h2{margin:0 0 2px;font-size:13px;text-align:center;}p{margin:0 0 4px;}table{border-collapse:collapse;width:100%;}td{padding:3px 6px;border:1px solid #aaa;font-size:11px;}td.num{text-align:right;font-family:monospace;}tr.total td{font-weight:700;background:#f3f4f6;border-top:2px solid #000;}tr.net td{font-weight:700;font-size:13px;background:#d1fae5;border-top:2px solid #000;}tr.ctc td{font-weight:700;background:#dbeafe;border-top:2px solid #1d4ed8;}tr.spacer td{border:none;height:6px;}tr.section-hdr td{font-weight:700;background:#e5e7eb;}</style></head><body>${html}</body></html>`;
+        const w = window.open('', '_blank', 'width=480,height=700');
+        if (!w) return;
+        w.document.write(fullHtml);
+        w.document.close();
+        w.onload = () => { w.focus(); w.print(); };
+      }
     } finally {
       setExporting(false);
     }
@@ -467,24 +515,26 @@ function PayslipSection({ taxRates }) {
     <div className="space-y-4">
       <CalcCard title="PAYE Payslip Generator">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1 sm:col-span-2">
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Company Name</label>
+            <input value={company} onChange={e => setCompany(e.target.value)} placeholder="(optional)" className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Employee Name</label>
+            <input value={empName} onChange={e => setEmpName(e.target.value)} placeholder="(optional)" className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Payslip Month</label>
+            <input type="month" defaultValue={format(new Date(), 'yyyy-MM')} onChange={e => { if (!e.target.value) return; const d = new Date(e.target.value + '-01'); setMonth(format(d, 'MMMM yyyy')); }} className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+          </div>
           <MoneyInput label="Basic Salary (TZS) *" value={basic} onChange={onBasic} />
           <MoneyInput label="Transport Allowance" value={transport} onChange={onTransport} />
           <MoneyInput label="Food Allowance" value={food} onChange={onFood} />
           <MoneyInput label="Housing Allowance" value={housing} onChange={onHousing} />
-          <MoneyInput label="Other Allowances" value={other} onChange={onOther} />
-          <div className="space-y-1">
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Payslip Month</label>
-            <input
-              type="month"
-              defaultValue={format(new Date(), 'yyyy-MM')}
-              onChange={e => {
-                if (!e.target.value) return;
-                const d = new Date(e.target.value + '-01');
-                setMonth(format(d, 'MMMM yyyy'));
-              }}
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-            />
-          </div>
+          <MoneyInput label="Cash in Lieu of Leave" value={cashInLieu} onChange={onCashInLieu} />
+          <MoneyInput label="Overtime" value={overtime} onChange={onOvertime} />
+          <MoneyInput label="Salary Advance" value={salaryAdvance} onChange={onSalaryAdvance} />
+          <MoneyInput label="Loan" value={loan} onChange={onLoan} />
         </div>
         <div className="flex gap-2">
           <CalcButton onClick={handleCalculate}>Generate Payslip</CalcButton>
@@ -494,74 +544,99 @@ function PayslipSection({ taxRates }) {
         {res && (
           <div className={cn('space-y-0.5 rounded-xl p-3 border transition-colors duration-300', flash ? 'bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200 dark:border-yellow-700/40' : 'bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-800')}>
             <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Quick Summary</h4>
-            <ResultRow label="Gross Pay" value={fmt(res.gross)} color="bold" flash={flash} />
-            <ResultRow label={`NSSF Employee (${(taxRates.NSSF_EMPLOYEE * 100).toFixed(0)}%)`} value={`− ${fmt(res.nssfEmployee)}`} color="red" flash={flash} />
-            <ResultRow label="Taxable Income" value={fmt(res.taxableIncome)} flash={flash} />
-            <ResultRow label="PAYE" value={`− ${fmt(res.paye)}`} color="red" flash={flash} />
-            <ResultRow label="Net Pay" value={fmt(res.netPay)} color="green" flash={flash} />
+            <ResultRow label="Total Earnings" value={fmtN(res.gross)} color="bold" flash={flash} />
+            <ResultRow label={`NSSF (${(taxRates.NSSF_EMPLOYEE*100).toFixed(0)}%)`} value={`− ${fmtN(res.nssfEmployee)}`} color="red" flash={flash} />
+            <ResultRow label="Taxable Pay" value={fmtN(res.taxableIncome)} flash={flash} />
+            <ResultRow label="PAYE" value={`− ${fmtN(res.paye)}`} color="red" flash={flash} />
+            <ResultRow label="Total Deductions" value={fmtN(res.totalDeductions)} color="red" flash={flash} />
+            <ResultRow label="Net Pay" value={fmtN(res.netPay)} color="green" flash={flash} />
           </div>
         )}
       </CalcCard>
 
-      {/* Payslip Voucher */}
+      {/* Salary Voucher */}
       {res && (
         <div>
-          <div ref={voucherRef} className="bg-white dark:bg-gray-950 border-2 border-gray-200 dark:border-gray-700 rounded-2xl p-5 space-y-4">
-            <div className="text-center border-b border-gray-200 dark:border-gray-700 pb-3">
-              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-widest">Employee Payslip</p>
-              <p className="text-lg font-bold text-gray-900 dark:text-white">{res.month}</p>
+          <div ref={voucherRef} className="bg-white dark:bg-gray-950 border-2 border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden">
+            {/* Header */}
+            <div className="text-center py-4 px-5 border-b border-gray-200 dark:border-gray-700">
+              {res.company && <p className="text-sm font-bold text-gray-900 dark:text-white uppercase">{res.company}</p>}
+              <p className="text-base font-bold text-gray-900 dark:text-white tracking-wide">SALARY VOUCHER</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">MONTH OF {res.month.toUpperCase()}</p>
             </div>
+            {res.empName && <div className="px-5 py-2 border-b border-gray-100 dark:border-gray-800 text-sm"><span className="font-semibold text-gray-700 dark:text-gray-300">NAME: </span><span className="text-gray-900 dark:text-white">{res.empName}</span></div>}
 
-            <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Earnings</p>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Basic Salary</span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.basicN)}</span></div>
-                {res.transportN > 0 && <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Transport Allowance</span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.transportN)}</span></div>}
-                {res.foodN > 0 && <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Food Allowance</span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.foodN)}</span></div>}
-                {res.housingN > 0 && <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Housing Allowance</span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.housingN)}</span></div>}
-                {res.otherN > 0 && <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Other Allowances</span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.otherN)}</span></div>}
-                <div className="flex justify-between font-semibold border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
-                  <span className="text-gray-800 dark:text-gray-200">Total Gross Pay</span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.gross)}</span>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Deductions</p>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">NSSF (Employee 10%)</span><span className="tabular-nums text-red-600 dark:text-red-400">{fmt(res.nssfEmployee)}</span></div>
-                <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">PAYE</span><span className="tabular-nums text-red-600 dark:text-red-400">{fmt(res.paye)}</span></div>
-              </div>
-            </div>
-
-            <div className="bg-green-50 dark:bg-green-900/20 rounded-xl px-4 py-3 flex justify-between items-center">
-              <span className="text-sm font-bold text-green-800 dark:text-green-300">Net Pay</span>
-              <span className="text-lg font-bold tabular-nums text-green-700 dark:text-green-400">{fmt(res.netPay)}</span>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5">Cost to Company</p>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">Gross Pay</span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.gross)}</span></div>
-                <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">NSSF (Employer 10%)</span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.nssfEmployer)}</span></div>
-                <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">SDL (3.5%)</span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.sdl)}</span></div>
-                <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">WCF (0.5%)</span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.wcf)}</span></div>
-                <div className="flex justify-between font-semibold border-t border-gray-200 dark:border-gray-700 pt-1 mt-1">
-                  <span className="text-gray-800 dark:text-gray-200">Total CTC</span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.totalCTC)}</span>
-                </div>
-              </div>
-            </div>
+            {/* Voucher table */}
+            <table className="w-full text-sm">
+              <tbody>
+                {[
+                  ['BASIC SALARY', res.basicN],
+                  ['TRANSPORT ALLOWANCE', res.transportN],
+                  ['FOOD ALLOWANCE', res.foodN],
+                  ['HOUSING ALLOWANCE', res.housingN],
+                  ['CASH IN LIEU OF LEAVE', res.cashInLieuN],
+                  ['OVERTIME', res.overtimeN],
+                ].map(([label, val]) => (
+                  <tr key={label} className="border-b border-gray-100 dark:border-gray-800">
+                    <td className="px-5 py-1.5 text-gray-700 dark:text-gray-300">{label}</td>
+                    <td className="px-5 py-1.5 text-right tabular-nums text-gray-900 dark:text-white w-32">{val > 0 ? fmtN(val) : <span className="text-gray-400">-</span>}</td>
+                  </tr>
+                ))}
+                <tr className="border-b-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50">
+                  <td className="px-5 py-2 font-bold text-gray-900 dark:text-white">TOTAL EARNINGS</td>
+                  <td className="px-5 py-2 text-right font-bold tabular-nums text-gray-900 dark:text-white">{fmtN(res.gross)}</td>
+                </tr>
+                <tr className="border-b border-gray-200 dark:border-gray-700">
+                  <td className="px-5 py-1.5 text-gray-600 dark:text-gray-400">TAXABLE PAY</td>
+                  <td className="px-5 py-1.5 text-right tabular-nums text-gray-900 dark:text-white">{fmtN(res.taxableIncome)}</td>
+                </tr>
+                <tr className="bg-gray-50 dark:bg-gray-800/40">
+                  <td colSpan={2} className="px-5 py-1.5 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">DEDUCTION</td>
+                </tr>
+                {[
+                  ['P.A.Y.E', res.paye],
+                  ['Less Relief', 0],
+                  ['N.S.S.F', res.nssfEmployee],
+                  ['Salary Advance', res.salaryAdvanceN],
+                  ['Loan', res.loanN],
+                ].map(([label, val]) => (
+                  <tr key={label} className="border-b border-gray-100 dark:border-gray-800">
+                    <td className="px-5 py-1.5 text-gray-700 dark:text-gray-300">{label}</td>
+                    <td className="px-5 py-1.5 text-right tabular-nums text-gray-900 dark:text-white">{val > 0 ? fmtN(val) : <span className="text-gray-400">-</span>}</td>
+                  </tr>
+                ))}
+                <tr className="border-b-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50">
+                  <td className="px-5 py-2 font-bold text-gray-900 dark:text-white">TOTAL DEDUCTIONS</td>
+                  <td className="px-5 py-2 text-right font-bold tabular-nums text-gray-900 dark:text-white">{fmtN(res.totalDeductions)}</td>
+                </tr>
+                <tr className="bg-green-50 dark:bg-green-900/20">
+                  <td className="px-5 py-3 font-bold text-green-800 dark:text-green-300 text-base">NET PAY</td>
+                  <td className="px-5 py-3 text-right font-bold tabular-nums text-green-700 dark:text-green-400 text-base">{fmtN(res.netPay)}</td>
+                </tr>
+                <tr className="bg-gray-50 dark:bg-gray-800/40">
+                  <td colSpan={2} className="px-5 py-1.5 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">COST TO COMPANY</td>
+                </tr>
+                {[
+                  ['Gross Pay', res.gross],
+                  [`NSSF Employer (${(taxRates.NSSF_EMPLOYER*100).toFixed(0)}%)`, res.nssfEmployer],
+                  [`WCF (${(taxRates.WCF*100).toFixed(1)}%)`, res.wcf],
+                ].map(([label, val]) => (
+                  <tr key={label} className="border-b border-gray-100 dark:border-gray-800">
+                    <td className="px-5 py-1.5 text-gray-700 dark:text-gray-300">{label}</td>
+                    <td className="px-5 py-1.5 text-right tabular-nums text-gray-900 dark:text-white">{fmtN(val)}</td>
+                  </tr>
+                ))}
+                <tr className="bg-blue-50 dark:bg-blue-900/20">
+                  <td className="px-5 py-2 font-bold text-blue-800 dark:text-blue-300">TOTAL CTC</td>
+                  <td className="px-5 py-2 text-right font-bold tabular-nums text-blue-700 dark:text-blue-400">{fmtN(res.totalCTC)}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
 
           <div className="flex gap-2 mt-3">
-            <button onClick={() => handleExport('png')} disabled={exporting} className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition disabled:opacity-50">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-              Export PNG
-            </button>
-            <button onClick={() => handleExport('pdf')} disabled={exporting} className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition disabled:opacity-50">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-              Export PDF
-            </button>
+            <button onClick={() => handleExport('png')} disabled={exporting} className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition disabled:opacity-50">PNG</button>
+            <button onClick={() => handleExport('pdf')} disabled={exporting} className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition disabled:opacity-50">PDF</button>
           </div>
         </div>
       )}
@@ -795,8 +870,8 @@ function CityLevySection({ taxRates }) {
 
   function handleCalculate() {
     if (!m1 || !m2) { alert('Please enter Month 1 and Month 2 turnovers.'); return; }
-    const r = calcCityLevy(m1, m2, m3, arrears, rate);
-    setRes({ ...r, rate, quarter, year, months, dueDate, m1, m2, m3, arrears });
+    const r = calcCityLevy(m1, m2, m3, computedArrears, rate);
+    setRes({ ...r, rate, quarter, year, months, dueDate, m1, m2, m3, arrears: computedArrears });
     setFlash(true);
     setTimeout(() => setFlash(false), 700);
     // persist
@@ -815,7 +890,36 @@ function CityLevySection({ taxRates }) {
     try {
       const fname = `CityLevy_${quarter}_${year}`;
       if (type === 'png') await exportToPng(voucherRef, fname);
-      else await exportToPdf(voucherRef, fname);
+      else {
+        const prevLastMonth = QUARTER_MONTHS[prevQ]?.[2];
+        const html = `
+          <h2>City Service Levy</h2>
+          <p class="sub">Period: ${months.join(' to ')} ${year}</p>
+          <table>
+            <thead><tr><th></th><th>Turnover</th><th>Code</th></tr></thead>
+            <tbody>
+              <tr><td colspan="3" class="section">Previous Quarter Summary</td></tr>
+              <tr><td>${prevLastMonth} Actual Turnover</td><td class="num">${fmtN(prevActual)}</td><td></td></tr>
+              <tr><td>${prevLastMonth} Estimated Turnover</td><td class="num">${fmtN(prevEst)}</td><td></td></tr>
+              <tr class="subtotal"><td>Arrears ${prevLastMonth} ${prevYear}</td><td class="num">${fmtN(computedArrears)}</td><td class="code">A</td></tr>
+              <tr><td colspan="3" class="section">Current Quarter Summary</td></tr>
+              <tr><td>${months[0]} Turnover</td><td class="num">${fmtN(res.m1)}</td><td class="code">B</td></tr>
+              <tr><td>${months[1]} Turnover</td><td class="num">${fmtN(res.m2)}</td><td class="code">C</td></tr>
+              <tr><td>${months[2]} Turnover</td><td class="num">${fmtN(res.m3)}</td><td class="code">D</td></tr>
+              <tr class="total"><td>Total Turnover</td><td class="num">${fmtN(res.adjustedTotal)}</td><td class="code">A+B+C+D</td></tr>
+              <tr><td colspan="3"></td></tr>
+              <tr class="levy"><td>City Service levy for the Quarter</td><td class="num levy-num">${fmtNDec(res.levy)}</td><td class="num">${(res.rate * 100).toFixed(2).replace(/\.?0+$/, '')}%</td></tr>
+            </tbody>
+          </table>
+          <p class="sub" style="margin-top:10px;">Due: ${res.dueDate} ${res.year}</p>
+        `;
+        const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${fname}</title><style>@page{size:A5 portrait;margin:10mm;}body{font-family:Arial,sans-serif;margin:0;color:#111827;font-size:11px;}h2{margin:0 0 2px;font-size:13px;}p.sub{margin:0 0 8px;font-size:10px;color:#6b7280;}table{border-collapse:collapse;width:100%;}th,td{padding:4px 8px;border:1px solid #d1d5db;font-size:11px;}th{background:#f3f4f6;font-weight:600;text-align:left;}td.num{text-align:right;font-family:monospace;}td.code{text-align:center;font-weight:700;background:#f9fafb;}td.section{background:#e5e7eb;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.04em;}tr.subtotal td{background:#fef3c7;}tr.total td{background:#dbeafe;font-weight:700;}tr.levy td{background:#d1fae5;font-weight:700;}td.levy-num{font-size:13px;font-weight:700;}</style></head><body>${html}</body></html>`;
+        const w = window.open('', '_blank', 'width=600,height=500');
+        if (!w) return;
+        w.document.write(fullHtml);
+        w.document.close();
+        w.onload = () => { w.focus(); w.print(); };
+      }
     } finally {
       setExporting(false);
     }
@@ -836,16 +940,9 @@ function CityLevySection({ taxRates }) {
         </div>
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
           {QUARTERS.map(q => (
-            <button
-              key={q}
-              onClick={() => switchQuarter(q)}
-              className={cn(
-                'px-3 py-1.5 text-xs font-semibold rounded-lg transition',
-                quarter === q ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              )}
-            >
-              {q}
-            </button>
+            <button key={q} onClick={() => switchQuarter(q)}
+              className={cn('px-3 py-1.5 text-xs font-semibold rounded-lg transition', quarter === q ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300')}
+            >{q}</button>
           ))}
         </div>
         <div className="flex items-center gap-2 ml-auto">
@@ -854,101 +951,97 @@ function CityLevySection({ taxRates }) {
         </div>
       </div>
 
-      <p className="text-xs text-gray-500 dark:text-gray-400">
-        Period: <strong>{months.join(' – ')} {year}</strong>
-      </p>
+      {/* Table-style input form */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden">
+        {/* Header */}
+        <div className="grid grid-cols-[1fr_auto_auto] bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700 px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+          <span>Period: {months.join(' – ')} {year}</span>
+          <span className="w-40 text-right pr-2">Turnover</span>
+          <span className="w-12 text-center">Code</span>
+        </div>
 
-      {/* Inputs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">{months[0]} Turnover (TZS)</label>
-          <input type="text" inputMode="numeric" value={month1Str}
-            onChange={e => setMonth1Str(formatMoney(e.target.value))}
-            onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
-            placeholder="0"
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-          />
+        {/* Previous Quarter Summary */}
+        <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700">
+          <p className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Previous Quarter Summary</p>
         </div>
-        <div className="space-y-1">
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">{months[1]} Turnover (TZS)</label>
-          <input type="text" inputMode="numeric" value={month2Str}
-            onChange={e => setMonth2Str(formatMoney(e.target.value))}
-            onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
-            placeholder="0"
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-          />
-        </div>
-      </div>
-
-      {/* Month 3 */}
-      <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 space-y-2 border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-medium text-gray-700 dark:text-gray-300">{months[2]} Estimate (TZS)</label>
-          <div className="flex gap-1 text-xs">
-            <button onClick={() => setMonth3Mode('manual')} className={cn('px-2.5 py-1 rounded-lg transition', month3Mode === 'manual' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm font-medium' : 'text-gray-500')}>Manual</button>
-            <button onClick={() => setMonth3Mode('auto')} className={cn('px-2.5 py-1 rounded-lg transition', month3Mode === 'auto' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm font-medium' : 'text-gray-500')}>Auto (avg)</button>
-          </div>
-        </div>
-        {month3Mode === 'auto' ? (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 dark:text-gray-400">Auto = (M1 + M2) / 2 =</span>
-            <span className="text-sm font-semibold text-blue-600 dark:text-blue-400 tabular-nums">{fmt(m3)}</span>
-          </div>
-        ) : (
-          <input type="text" inputMode="numeric" value={month3Str}
-            onChange={e => setMonth3Str(formatMoney(e.target.value))}
-            onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
-            placeholder="0"
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-          />
-        )}
-      </div>
-
-      {/* Arrears */}
-      <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 space-y-2 border border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Previous Quarter ({prevQ} {prevYear}) Arrears</label>
-          <div className="flex gap-1 text-xs">
-            <button onClick={() => setArrearsMode('manual')} className={cn('px-2.5 py-1 rounded-lg transition', arrearsMode === 'manual' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm font-medium' : 'text-gray-500')}>Manual</button>
-            <button onClick={() => setArrearsMode('compute')} className={cn('px-2.5 py-1 rounded-lg transition', arrearsMode === 'compute' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm font-medium' : 'text-gray-500')}>Compute</button>
-          </div>
-        </div>
-        {arrearsMode === 'compute' ? (
-          <div className="space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <label className="text-xs text-gray-500">Prev {QUARTER_MONTHS[prevQ]?.[2]} Actual</label>
-                <input type="text" inputMode="numeric" value={prevActualStr}
-                  onChange={e => setPrevActualStr(formatMoney(e.target.value))}
-                  onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
-                  placeholder="0"
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-gray-500">Prev {QUARTER_MONTHS[prevQ]?.[2]} Estimated</label>
-                <input type="text" inputMode="numeric" value={prevEstStr}
-                  onChange={e => setPrevEstStr(formatMoney(e.target.value))}
-                  onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
-                  placeholder="0"
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">Computed Arrears =</span>
-              <span className={cn('text-sm font-semibold tabular-nums', computedArrears > 0 ? 'text-amber-600 dark:text-amber-400' : computedArrears < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500')}>{computedArrears >= 0 ? '' : '−'}{fmt(Math.abs(computedArrears))}</span>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-1">
-            <p className="text-xs text-gray-500 dark:text-gray-400">Enter signed amount (positive = underpaid, negative = overpaid)</p>
-            <input type="text" value={arrearsStr}
-              onChange={e => setArrearsStr(formatMoney(e.target.value))}
+        {[
+          { label: `${QUARTER_MONTHS[prevQ]?.[2]} Actual Turnover`, val: prevActualStr, set: setPrevActualStr },
+          { label: `${QUARTER_MONTHS[prevQ]?.[2]} Estimated Turnover`, val: prevEstStr, set: setPrevEstStr },
+        ].map(({ label, val, set }) => (
+          <div key={label} className="grid grid-cols-[1fr_auto_auto] items-center px-4 py-2 border-b border-gray-100 dark:border-gray-800">
+            <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
+            <input type="text" inputMode="numeric" value={val}
+              onChange={e => set(formatMoney(e.target.value))}
               onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
-              placeholder="0 (or -100,000)"
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+              placeholder="0"
+              className="w-40 px-2 py-1.5 text-right rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
             />
+            <span className="w-12 text-center text-xs text-gray-400">—</span>
+          </div>
+        ))}
+        {/* Arrears row */}
+        <div className="grid grid-cols-[1fr_auto_auto] items-center px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-amber-50 dark:bg-amber-900/10">
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Arrears {QUARTER_MONTHS[prevQ]?.[2]} {prevYear}</span>
+          <span className={cn('w-40 text-right pr-2 text-sm font-semibold tabular-nums', computedArrears > 0 ? 'text-amber-700 dark:text-amber-400' : computedArrears < 0 ? 'text-green-700 dark:text-green-400' : 'text-gray-500')}>{fmtN(computedArrears)}</span>
+          <span className="w-12 text-center text-xs font-bold text-gray-700 dark:text-gray-300">A</span>
+        </div>
+
+        {/* Current Quarter Summary */}
+        <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700">
+          <p className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Current Quarter Summary</p>
+        </div>
+        {[
+          { label: `${months[0]} Turnover`, val: month1Str, set: setMonth1Str, code: 'B' },
+          { label: `${months[1]} Turnover`, val: month2Str, set: setMonth2Str, code: 'C' },
+        ].map(({ label, val, set, code }) => (
+          <div key={label} className="grid grid-cols-[1fr_auto_auto] items-center px-4 py-2 border-b border-gray-100 dark:border-gray-800">
+            <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
+            <input type="text" inputMode="numeric" value={val}
+              onChange={e => set(formatMoney(e.target.value))}
+              onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+              placeholder="0"
+              className="w-40 px-2 py-1.5 text-right rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+            />
+            <span className="w-12 text-center text-xs font-bold text-gray-700 dark:text-gray-300">{code}</span>
+          </div>
+        ))}
+        {/* Month 3 with toggle */}
+        <div className="grid grid-cols-[1fr_auto_auto] items-center px-4 py-2 border-b border-gray-100 dark:border-gray-800">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-700 dark:text-gray-300">{months[2]} Turnover</span>
+            <div className="flex gap-0.5 text-[10px]">
+              <button onClick={() => setMonth3Mode('manual')} className={cn('px-2 py-0.5 rounded transition', month3Mode === 'manual' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-semibold' : 'text-gray-400 hover:text-gray-600')}>Manual</button>
+              <button onClick={() => setMonth3Mode('auto')} className={cn('px-2 py-0.5 rounded transition', month3Mode === 'auto' ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-semibold' : 'text-gray-400 hover:text-gray-600')}>Est.</button>
+            </div>
+          </div>
+          {month3Mode === 'auto' ? (
+            <span className="w-40 text-right pr-2 text-sm tabular-nums text-blue-600 dark:text-blue-400 font-semibold">{fmtN(m3)}</span>
+          ) : (
+            <input type="text" inputMode="numeric" value={month3Str}
+              onChange={e => setMonth3Str(formatMoney(e.target.value))}
+              onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+              placeholder="0"
+              className="w-40 px-2 py-1.5 text-right rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+            />
+          )}
+          <span className="w-12 text-center text-xs font-bold text-gray-700 dark:text-gray-300">D</span>
+        </div>
+        {/* Total Turnover */}
+        <div className="grid grid-cols-[1fr_auto_auto] items-center px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/10">
+          <span className="text-sm font-bold text-gray-900 dark:text-white">Total Turnover</span>
+          <span className="w-40 text-right pr-2 text-sm font-bold tabular-nums text-gray-900 dark:text-white">{fmtN(m1 + m2 + m3 + computedArrears)}</span>
+          <span className="w-12 text-center text-[10px] font-bold text-gray-700 dark:text-gray-300">A+B+C+D</span>
+        </div>
+
+        {/* City Levy result row (shown after calculate) */}
+        {res && (
+          <div className={cn('grid grid-cols-[1fr_auto_auto] items-center px-4 py-3 transition-colors duration-300', flash ? 'bg-yellow-100 dark:bg-yellow-900/20' : 'bg-green-50 dark:bg-green-900/10')}>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-gray-900 dark:text-white">City Service Levy for the Quarter</span>
+              <RateBadge rate={res.rate} />
+            </div>
+            <span className="w-40 text-right pr-2 text-base font-bold tabular-nums text-green-700 dark:text-green-400">{fmtNDec(res.levy)}</span>
+            <span className="w-12 text-center text-xs text-gray-400">—</span>
           </div>
         )}
       </div>
@@ -956,53 +1049,226 @@ function CityLevySection({ taxRates }) {
       <div className="flex gap-2">
         <CalcButton onClick={handleCalculate}>Calculate City Levy</CalcButton>
         <CalcButton onClick={handleReset} variant="secondary">Reset</CalcButton>
+        {res && (
+          <>
+            <button onClick={() => handleExport('png')} disabled={exporting} className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition disabled:opacity-50">
+              PNG
+            </button>
+            <button onClick={() => handleExport('pdf')} disabled={exporting} className="flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition disabled:opacity-50">
+              PDF
+            </button>
+          </>
+        )}
       </div>
 
-      {/* Results */}
+      {/* Hidden voucher ref for PNG export */}
       {res && (
-        <div>
-          <div ref={voucherRef} className="bg-white dark:bg-gray-950 border-2 border-gray-200 dark:border-gray-700 rounded-2xl p-5 space-y-4">
-            <div className="text-center border-b border-gray-200 dark:border-gray-700 pb-3">
-              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-widest">City Service Levy</p>
-              <p className="text-lg font-bold text-gray-900 dark:text-white">{res.quarter} {res.year}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">{res.months.join(' – ')}</p>
-            </div>
-
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">{res.months[0]}</span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.m1)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">{res.months[1]}</span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.m2)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-600 dark:text-gray-400">{res.months[2]} <span className="text-xs text-gray-400">(Est.)</span></span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.m3)}</span></div>
-              <div className="flex justify-between font-semibold border-t border-gray-200 dark:border-gray-700 pt-1 mt-1"><span className="text-gray-700 dark:text-gray-300">Total Turnover</span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.totalTurnover)}</span></div>
-              {res.arrears !== 0 && (
-                <div className={cn('flex justify-between', res.arrears > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400')}>
-                  <span>Arrears ({res.arrears > 0 ? '+' : ''})</span>
-                  <span className="tabular-nums">{res.arrears >= 0 ? '' : '−'}{fmt(Math.abs(res.arrears))}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-semibold"><span className="text-gray-700 dark:text-gray-300">Adjusted Turnover</span><span className="tabular-nums text-gray-900 dark:text-white">{fmt(res.adjustedTotal)}</span></div>
-              <div className="flex justify-between text-xs text-gray-500"><span>Rate Applied</span><span><RateBadge rate={res.rate} /></span></div>
-            </div>
-
-            <div className={cn('rounded-xl px-4 py-3 flex justify-between items-center transition-colors duration-300', flash ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-blue-50 dark:bg-blue-900/20')}>
-              <span className="text-sm font-bold text-blue-800 dark:text-blue-300">City Levy</span>
-              <span className="text-lg font-bold tabular-nums text-blue-700 dark:text-blue-400">{fmtDec(res.levy)}</span>
-            </div>
-
-            <p className="text-xs text-center text-gray-500 dark:text-gray-400">Due: {res.dueDate} {res.year}</p>
-          </div>
-
-          <div className="flex gap-2 mt-3">
-            <button onClick={() => handleExport('png')} disabled={exporting} className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition disabled:opacity-50">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-              Export PNG
-            </button>
-            <button onClick={() => handleExport('pdf')} disabled={exporting} className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition disabled:opacity-50">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-              Export PDF
-            </button>
-          </div>
+        <div ref={voucherRef} className="bg-white border border-gray-200 rounded-xl p-4 text-sm" style={{ position: 'absolute', left: '-9999px', top: 0, width: '500px' }}>
+          <p className="font-bold text-base mb-1">City Service Levy – {res.quarter} {res.year}</p>
+          <p className="text-xs text-gray-500 mb-3">{res.months.join(' – ')}</p>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+            <thead><tr style={{ background: '#f3f4f6' }}><th style={{ textAlign: 'left', padding: '4px 8px', border: '1px solid #d1d5db' }}>Description</th><th style={{ textAlign: 'right', padding: '4px 8px', border: '1px solid #d1d5db' }}>Turnover</th><th style={{ textAlign: 'center', padding: '4px 8px', border: '1px solid #d1d5db' }}>Code</th></tr></thead>
+            <tbody>
+              <tr style={{ background: '#e5e7eb' }}><td colSpan={3} style={{ padding: '4px 8px', border: '1px solid #d1d5db', fontWeight: 700 }}>Previous Quarter Summary</td></tr>
+              <tr><td style={{ padding: '4px 8px', border: '1px solid #d1d5db' }}>{QUARTER_MONTHS[prevQ]?.[2]} Actual Turnover</td><td style={{ textAlign: 'right', padding: '4px 8px', border: '1px solid #d1d5db' }}>{fmtN(prevActual)}</td><td style={{ textAlign: 'center', border: '1px solid #d1d5db' }}>—</td></tr>
+              <tr><td style={{ padding: '4px 8px', border: '1px solid #d1d5db' }}>{QUARTER_MONTHS[prevQ]?.[2]} Estimated Turnover</td><td style={{ textAlign: 'right', padding: '4px 8px', border: '1px solid #d1d5db' }}>{fmtN(prevEst)}</td><td style={{ textAlign: 'center', border: '1px solid #d1d5db' }}>—</td></tr>
+              <tr style={{ background: '#fef3c7' }}><td style={{ padding: '4px 8px', border: '1px solid #d1d5db', fontWeight: 600 }}>Arrears {QUARTER_MONTHS[prevQ]?.[2]} {prevYear}</td><td style={{ textAlign: 'right', padding: '4px 8px', border: '1px solid #d1d5db', fontWeight: 600 }}>{fmtN(computedArrears)}</td><td style={{ textAlign: 'center', padding: '4px 8px', border: '1px solid #d1d5db', fontWeight: 700 }}>A</td></tr>
+              <tr style={{ background: '#e5e7eb' }}><td colSpan={3} style={{ padding: '4px 8px', border: '1px solid #d1d5db', fontWeight: 700 }}>Current Quarter Summary</td></tr>
+              <tr><td style={{ padding: '4px 8px', border: '1px solid #d1d5db' }}>{res.months[0]} Turnover</td><td style={{ textAlign: 'right', padding: '4px 8px', border: '1px solid #d1d5db' }}>{fmtN(res.m1)}</td><td style={{ textAlign: 'center', padding: '4px 8px', border: '1px solid #d1d5db', fontWeight: 700 }}>B</td></tr>
+              <tr><td style={{ padding: '4px 8px', border: '1px solid #d1d5db' }}>{res.months[1]} Turnover</td><td style={{ textAlign: 'right', padding: '4px 8px', border: '1px solid #d1d5db' }}>{fmtN(res.m2)}</td><td style={{ textAlign: 'center', padding: '4px 8px', border: '1px solid #d1d5db', fontWeight: 700 }}>C</td></tr>
+              <tr><td style={{ padding: '4px 8px', border: '1px solid #d1d5db' }}>{res.months[2]} Turnover</td><td style={{ textAlign: 'right', padding: '4px 8px', border: '1px solid #d1d5db' }}>{fmtN(res.m3)}</td><td style={{ textAlign: 'center', padding: '4px 8px', border: '1px solid #d1d5db', fontWeight: 700 }}>D</td></tr>
+              <tr style={{ background: '#dbeafe' }}><td style={{ padding: '4px 8px', border: '1px solid #d1d5db', fontWeight: 700 }}>Total Turnover</td><td style={{ textAlign: 'right', padding: '4px 8px', border: '1px solid #d1d5db', fontWeight: 700 }}>{fmtN(res.adjustedTotal)}</td><td style={{ textAlign: 'center', padding: '4px 8px', border: '1px solid #d1d5db', fontWeight: 700, fontSize: '10px' }}>A+B+C+D</td></tr>
+              <tr style={{ background: '#d1fae5' }}><td style={{ padding: '6px 8px', border: '1px solid #d1d5db', fontWeight: 700 }}>City Service Levy for the Quarter ({(res.rate * 100).toFixed(2).replace(/\.?0+$/, '')}%)</td><td style={{ textAlign: 'right', padding: '6px 8px', border: '1px solid #d1d5db', fontWeight: 700, fontSize: '13px' }}>{fmtNDec(res.levy)}</td><td style={{ textAlign: 'center', border: '1px solid #d1d5db' }}>—</td></tr>
+            </tbody>
+          </table>
+          <p style={{ fontSize: '10px', color: '#6b7280', marginTop: '8px' }}>Due: {res.dueDate} {res.year}</p>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Depreciation Section ────────────────────────────────────────────────────
+const DEPR_CLASSES = [
+  { cls: '1', method: 'Diminishing', rate: 0.375, assets: 'Computers, IT equipment, cars, minibuses (<30 seats), light goods vehicles (<7t), construction equipment' },
+  { cls: '2', method: 'Diminishing', rate: 0.25,  assets: 'Heavy trucks, buses (30+ seats), aircraft, ships, manufacturing/agricultural machinery' },
+  { cls: '3', method: 'Diminishing', rate: 0.125, assets: 'Office furniture, fixtures, office equipment, assets not in other classes' },
+  { cls: '5', method: 'Straight-line', rate: 0.20, assets: 'Agricultural buildings and structures' },
+  { cls: '6', method: 'Straight-line', rate: 0.05, assets: 'Commercial and residential buildings (other than Class 5)' },
+  { cls: '7', method: 'Straight-line', rate: null, assets: 'Intangible assets (patents, licenses, software rights)' },
+  { cls: '8', method: 'Full write-off', rate: 1.00, assets: 'Qualifying plant & machinery (some agricultural and mineral exploration assets)' },
+];
+
+const DEPR_EXAMPLES = [
+  ['Laptop / Desktop / Computer', '1', 0.375],
+  ['Motor car', '1', 0.375],
+  ['Toyota Hiace / minibus (<30 seats)', '1', 0.375],
+  ['Heavy truck (10+ tonnes)', '2', 0.25],
+  ['Manufacturing machine', '2', 0.25],
+  ['Office desk / chair / furniture', '3', 0.125],
+  ['Office printer / copier', '3', 0.125],
+  ['Agricultural building', '5', 0.20],
+  ['Commercial / office building', '6', 0.05],
+];
+
+function DepreciationSection() {
+  const [cost, setCost] = useState('');
+  const [cls, setCls] = useState('1');
+  const [years, setYears] = useState(5);
+  const [usefulLife, setUsefulLife] = useState(5);
+  const [table, setTable] = useState(null);
+
+  const selected = DEPR_CLASSES.find(c => c.cls === cls);
+  const rate = selected?.rate;
+  const method = selected?.method;
+
+  function handleCalculate() {
+    const cost0 = parseFloat(cost.replace(/,/g, ''));
+    if (!cost0 || cost0 <= 0) { alert('Enter a valid cost.'); return; }
+    const r = cls === '7' ? 1 / usefulLife : rate;
+    const rows = [];
+    let nbv = cost0;
+    const n = cls === '8' ? 1 : years;
+    for (let y = 1; y <= n; y++) {
+      const depr = method === 'Straight-line' || cls === '8'
+        ? Math.min(cost0 * r, nbv)
+        : nbv * r;
+      const rounded = Math.round(depr);
+      const closingNbv = Math.max(0, Math.round(nbv - depr));
+      rows.push({ year: y, openingNbv: Math.round(nbv), depr: rounded, closingNbv });
+      nbv = closingNbv;
+      if (nbv === 0) break;
+    }
+    setTable({ rows, cost0, cls, method, r });
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Class reference table */}
+      <div>
+        <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Tanzania Capital Allowance Classes (ITA Cap.332)</h3>
+        <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 dark:bg-gray-800/60">
+              <tr>
+                <th className="text-left px-3 py-2 text-gray-500 font-semibold">Class</th>
+                <th className="text-left px-3 py-2 text-gray-500 font-semibold">Method</th>
+                <th className="text-right px-3 py-2 text-gray-500 font-semibold">Rate</th>
+                <th className="text-left px-3 py-2 text-gray-500 font-semibold">Asset Types</th>
+              </tr>
+            </thead>
+            <tbody>
+              {DEPR_CLASSES.map(c => (
+                <tr key={c.cls} className="border-t border-gray-100 dark:border-gray-800">
+                  <td className="px-3 py-2 font-bold text-blue-700 dark:text-blue-400">Class {c.cls}</td>
+                  <td className="px-3 py-2 text-gray-600 dark:text-gray-300 whitespace-nowrap">{c.method}</td>
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums text-gray-900 dark:text-white whitespace-nowrap">
+                    {c.rate === 1 ? '100%' : c.rate === null ? '1 ÷ life' : `${(c.rate*100)}%`}
+                  </td>
+                  <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{c.assets}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Calculator */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 space-y-4">
+        <h3 className="text-sm font-bold text-gray-900 dark:text-white">Depreciation Schedule Calculator</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="space-y-1 col-span-2 sm:col-span-1">
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Asset Cost (TZS)</label>
+            <input type="text" inputMode="numeric" value={cost}
+              onChange={e => setCost(e.target.value.replace(/[^0-9,]/g,''))}
+              placeholder="0"
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Class</label>
+            <select value={cls} onChange={e => setCls(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+              {DEPR_CLASSES.map(c => <option key={c.cls} value={c.cls}>Class {c.cls} — {c.rate===null?'1÷life':c.rate===1?'100%':`${c.rate*100}%`}</option>)}
+            </select>
+          </div>
+          {cls === '7' ? (
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Useful Life (yrs)</label>
+              <input type="number" min={1} value={usefulLife} onChange={e => setUsefulLife(parseInt(e.target.value)||1)}
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+            </div>
+          ) : cls !== '8' && (
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Years to project</label>
+              <input type="number" min={1} max={50} value={years} onChange={e => setYears(parseInt(e.target.value)||1)}
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+            </div>
+          )}
+        </div>
+        {selected && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-2">
+            <span className="font-semibold text-blue-600 dark:text-blue-400">Class {cls}</span> · {method} · Rate: {rate===null?`${(1/usefulLife*100).toFixed(2)}%`:rate===1?'100%':`${rate*100}%`} · {selected.assets}
+          </p>
+        )}
+        <CalcButton onClick={handleCalculate}>Generate Schedule</CalcButton>
+      </div>
+
+      {/* Result table */}
+      {table && (
+        <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-gray-800/60">
+              <tr>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">Year</th>
+                <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500">Opening NBV (TZS)</th>
+                <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500">Depreciation (TZS)</th>
+                <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500">Closing NBV (TZS)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {table.rows.map(r => (
+                <tr key={r.year} className="border-t border-gray-100 dark:border-gray-800">
+                  <td className="px-4 py-2 text-gray-700 dark:text-gray-300 font-medium">Year {r.year}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-gray-900 dark:text-white">{fmtN(r.openingNbv)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-red-600 dark:text-red-400 font-semibold">{fmtN(r.depr)}</td>
+                  <td className={cn('px-4 py-2 text-right tabular-nums font-semibold', r.closingNbv === 0 ? 'text-gray-400' : 'text-gray-900 dark:text-white')}>{fmtN(r.closingNbv)}</td>
+                </tr>
+              ))}
+              <tr className="border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50">
+                <td className="px-4 py-2 font-bold text-gray-900 dark:text-white">Total</td>
+                <td className="px-4 py-2"></td>
+                <td className="px-4 py-2 text-right tabular-nums font-bold text-red-700 dark:text-red-400">{fmtN(table.rows.reduce((s,r)=>s+r.depr,0))}</td>
+                <td className="px-4 py-2"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Common assets quick ref */}
+      <div>
+        <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Common Assets Quick Reference</h3>
+        <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+          <table className="w-full text-xs">
+            <thead className="bg-gray-50 dark:bg-gray-800/60">
+              <tr>
+                <th className="text-left px-3 py-2 text-gray-500 font-semibold">Asset</th>
+                <th className="text-center px-3 py-2 text-gray-500 font-semibold">Class</th>
+                <th className="text-right px-3 py-2 text-gray-500 font-semibold">Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {DEPR_EXAMPLES.map(([asset, c, r]) => (
+                <tr key={asset} className="border-t border-gray-100 dark:border-gray-800">
+                  <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{asset}</td>
+                  <td className="px-3 py-2 text-center font-semibold text-blue-700 dark:text-blue-400">{c}</td>
+                  <td className="px-3 py-2 text-right tabular-nums font-semibold text-gray-900 dark:text-white">{r*100}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1014,7 +1280,8 @@ const TABS = [
   { key: 'provisional', label: 'Provisional' },
   { key: 'wht',         label: 'WHT' },
   { key: 'employment',  label: 'Employment' },
-  { key: 'cityLevy',    label: 'City Levy' },
+  { key: 'cityLevy',      label: 'City Levy' },
+  { key: 'depreciation',  label: 'Depreciation' },
 ];
 
 export default function TaxTool() {
@@ -1056,6 +1323,7 @@ export default function TaxTool() {
       {activeTab === 'wht'         && <WHTSection         taxRates={taxRates} />}
       {activeTab === 'employment'  && <EmploymentSection  taxRates={taxRates} />}
       {activeTab === 'cityLevy'    && <CityLevySection    taxRates={taxRates} />}
+      {activeTab === 'depreciation' && <DepreciationSection />}
     </div>
   );
 }
