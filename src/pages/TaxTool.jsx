@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext.jsx';
-import { cn, format } from '../utils/index.js';
+import { cn, format, escapeHtml } from '../utils/index.js';
 import {
   fmt, fmtN, fmtDec, fmtNDec,
   readNum, readNumDec, readSignedDec,
@@ -151,7 +151,7 @@ async function exportToPng(ref, filename) {
 }
 
 function exportToPdf(htmlContent, title) {
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><style>@page{size:A5 portrait;margin:12mm;}body{font-family:Arial,sans-serif;margin:0;color:#111827;font-size:11px;}h2{margin:0 0 3px;font-size:13px;}p.sub{margin:0 0 10px;font-size:10px;color:#6b7280;}.section-title{font-size:9px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;font-weight:600;margin:10px 0 4px;}.row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e5e7eb;font-size:11px;}.row.bold{font-weight:700;border-bottom:2px solid #d1d5db;}.row.net{background:#f0fdf4;padding:6px 8px;border-radius:4px;border-bottom:none;margin:6px 0;font-weight:700;font-size:12px;color:#15803d;}</style></head><body>${htmlContent}</body></html>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>@page{size:A5 portrait;margin:12mm;}body{font-family:Arial,sans-serif;margin:0;color:#111827;font-size:11px;}h2{margin:0 0 3px;font-size:13px;}p.sub{margin:0 0 10px;font-size:10px;color:#6b7280;}.section-title{font-size:9px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;font-weight:600;margin:10px 0 4px;}.row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #e5e7eb;font-size:11px;}.row.bold{font-weight:700;border-bottom:2px solid #d1d5db;}.row.net{background:#f0fdf4;padding:6px 8px;border-radius:4px;border-bottom:none;margin:6px 0;font-weight:700;font-size:12px;color:#15803d;}</style></head><body>${htmlContent}</body></html>`;
   const w = window.open('', '_blank', 'width=500,height=600');
   if (!w) return;
   w.document.write(html);
@@ -225,109 +225,171 @@ function VATSection({ taxRates }) {
 
 // ─── Provisional Tax Section ──────────────────────────────────────────────────
 
+const PROV_QUARTERS = [['Q1', '31 Mar'], ['Q2', '30 Jun'], ['Q3', '30 Sep'], ['Q4', '31 Dec']];
+
 function ProvisionalSection({ taxRates }) {
   const provBands = taxRates.PROV_BANDS;
   const corpRate  = taxRates.CORPORATE;
 
-  const [iProfit, onIProfit, iProfitN] = useMoneyInput('');
-  const [iRes, setIRes] = useState(null);
-  const [iFlash, setIFlash] = useState(false);
+  const [payer, setPayer] = useState('individual'); // 'individual' | 'corporate'
+  const [mode,  setMode]  = useState('forward');    // 'forward' (profit→tax) | 'reverse' (tax→profit)
+  const [profit, onProfit] = useMoneyInput('');
+  const [target, onTarget] = useMoneyInput('');
+  const profitN = parseMoneyStr(profit);
+  const targetN = parseMoneyStr(target);
+  const [res, setRes]     = useState(null);
+  const [flash, setFlash] = useState(false);
 
-  const [iTarget, onITarget, iTargetN] = useMoneyInput('');
-  const [iRevRes, setIRevRes] = useState(null);
-  const [iRevFlash, setIRevFlash] = useState(false);
+  const isCorp = payer === 'corporate';
 
-  const [cProfit, onCProfit, cProfitN] = useMoneyInput('');
-  const [cRes, setCRes] = useState(null);
-  const [cFlash, setCFlash] = useState(false);
+  function handleCalc() {
+    if (mode === 'forward') {
+      if (!profitN || profitN <= 0) { alert('Enter the annual profit.'); return; }
+      const tax = isCorp ? profitN * corpRate : calcBandTax(profitN, provBands);
+      setRes({ kind: 'forward', profit: profitN, tax, quarterly: tax / 4, eff: profitN ? tax / profitN : 0 });
+    } else {
+      if (!targetN || targetN <= 0) { alert('Enter the target tax amount.'); return; }
+      const p = isCorp ? targetN / corpRate : calcBandReverse(targetN, provBands);
+      setRes({ kind: 'reverse', target: targetN, profit: p, quarterly: targetN / 4 });
+    }
+    setFlash(true);
+    setTimeout(() => setFlash(false), 700);
+  }
 
-  const [cTarget, onCTarget, cTargetN] = useMoneyInput('');
-  const [cRevRes, setCRevRes] = useState(null);
-  const [cRevFlash, setCRevFlash] = useState(false);
+  // Which band the calculated profit falls in (individual + forward only)
+  const activeBand = (!isCorp && res?.kind === 'forward')
+    ? provBands.findIndex(b => res.profit >= b.min && (b.max == null || b.max === Infinity || res.profit <= b.max))
+    : -1;
 
-  function flash(setter) { setter(true); setTimeout(() => setter(false), 700); }
+  const segBtn = (active) => cn(
+    'flex-1 py-2 px-3 rounded-lg text-sm font-semibold transition text-center leading-tight',
+    active
+      ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/25'
+      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/50'
+  );
+  const modeBtn = (active) => cn(
+    'flex-1 py-1.5 px-2 rounded-md text-xs font-semibold transition',
+    active
+      ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/25'
+      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-white/60 dark:hover:bg-gray-700/50'
+  );
 
   return (
-    <div className="space-y-6">
-      {/* Individual */}
-      <div>
-        <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 uppercase tracking-wide">Individual (Progressive Bands)</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <CalcCard title="Annual Profit → Tax">
-            <MoneyInput label="Annual Profit (TZS)" value={iProfit} onChange={onIProfit} />
-            <CalcButton onClick={() => { const tax = calcBandTax(iProfitN, provBands); setIRes({ tax, quarterly: tax / 4 }); flash(setIFlash); }}>Calculate</CalcButton>
-            {iRes && (
-              <div className="space-y-0.5">
-                <ResultRow label="Annual Tax" value={fmt(iRes.tax)} color="red" flash={iFlash} />
-                <ResultRow label="Quarterly Instalment" value={fmt(iRes.quarterly)} color="bold" flash={iFlash} />
-              </div>
-            )}
-          </CalcCard>
-          <CalcCard title="Target Tax → Required Profit">
-            <MoneyInput label="Desired Annual Tax (TZS)" value={iTarget} onChange={onITarget} />
-            <CalcButton onClick={() => { const profit = calcBandReverse(iTargetN, provBands); setIRevRes({ profit }); flash(setIRevFlash); }}>Calculate</CalcButton>
-            {iRevRes && (
-              <div className="space-y-0.5">
-                <ResultRow label="Required Annual Profit" value={fmt(iRevRes.profit)} color="blue" flash={iRevFlash} />
-              </div>
-            )}
-          </CalcCard>
+    <div className="space-y-4">
+      {/* Taxpayer type */}
+      <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl">
+        <button onClick={() => { setPayer('individual'); setRes(null); }} className={segBtn(!isCorp)}>
+          Individual<span className="block text-[10px] font-normal opacity-70">Progressive bands</span>
+        </button>
+        <button onClick={() => { setPayer('corporate'); setRes(null); }} className={segBtn(isCorp)}>
+          Corporate<span className="block text-[10px] font-normal opacity-70">Flat {(corpRate * 100).toFixed(0)}%</span>
+        </button>
+      </div>
+
+      {/* Calculator */}
+      <CalcCard title={`Provisional Tax — ${isCorp ? 'Corporate' : 'Individual'}`}>
+        {/* Direction toggle */}
+        <div className="flex gap-1 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg">
+          <button onClick={() => { setMode('forward'); setRes(null); }} className={modeBtn(mode === 'forward')}>Profit → Tax</button>
+          <button onClick={() => { setMode('reverse'); setRes(null); }} className={modeBtn(mode === 'reverse')}>Target Tax → Profit</button>
         </div>
 
-        {/* Band reference table */}
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="bg-gray-50 dark:bg-gray-800/60">
-                <th className="text-left px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Annual Income (TZS)</th>
-                <th className="text-right px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {provBands.map((b, i) => (
-                <tr key={i} className="border-t border-gray-100 dark:border-gray-800">
-                  <td className="px-3 py-1.5 text-gray-700 dark:text-gray-300 tabular-nums">
-                    {fmtN(b.min)}{b.max ? ` – ${fmtN(b.max)}` : ' and above'}
-                  </td>
-                  <td className="px-3 py-1.5 text-right font-semibold tabular-nums text-blue-700 dark:text-blue-400">
-                    {(b.rate * 100).toFixed(0)}%{b.base > 0 && ` (+${fmtN(b.base)})`}
-                  </td>
-                </tr>
+        {mode === 'forward'
+          ? <MoneyInput label="Annual Profit (TZS)" value={profit} onChange={onProfit} />
+          : <MoneyInput label="Desired Annual Tax (TZS)" value={target} onChange={onTarget} />}
+
+        <CalcButton onClick={handleCalc}>Calculate</CalcButton>
+
+        {/* Forward result */}
+        {res?.kind === 'forward' && (
+          <div className="rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+            <div className={cn('grid grid-cols-3 divide-x divide-gray-100 dark:divide-gray-800 transition-colors duration-500', flash && 'bg-yellow-50 dark:bg-yellow-900/10')}>
+              {[
+                { label: 'Annual Tax', value: fmtN(Math.round(res.tax)), color: 'text-red-600 dark:text-red-400' },
+                { label: 'Per Quarter', value: fmtN(Math.round(res.quarterly)), color: 'text-blue-600 dark:text-blue-400' },
+                { label: 'Effective Rate', value: `${(res.eff * 100).toFixed(1)}%`, color: 'text-green-600 dark:text-green-400' },
+              ].map(t => (
+                <div key={t.label} className="px-2 py-3.5 text-center">
+                  <p className={cn('text-base sm:text-lg font-bold tabular-nums leading-tight break-words', t.color)}>{t.value}</p>
+                  <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-1">{t.label}</p>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="border-t border-gray-200 dark:border-gray-700 pt-4" />
-
-      {/* Corporate */}
-      <div>
-        <h3 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-1 uppercase tracking-wide">Corporate (Flat Rate)</h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Corporate rate: <strong>{(corpRate * 100).toFixed(0)}%</strong> on all taxable profit — configurable in Settings</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <CalcCard title="Annual Profit → Tax">
-            <MoneyInput label="Annual Profit (TZS)" value={cProfit} onChange={onCProfit} />
-            <CalcButton onClick={() => { const tax = cProfitN * corpRate; setCRes({ tax, quarterly: tax / 4 }); flash(setCFlash); }}>Calculate</CalcButton>
-            {cRes && (
-              <div className="space-y-0.5">
-                <ResultRow label={`Corporate Tax (${(corpRate * 100).toFixed(0)}%)`} value={fmt(cRes.tax)} color="red" flash={cFlash} />
-                <ResultRow label="Quarterly Instalment" value={fmt(cRes.quarterly)} color="bold" flash={cFlash} />
+            </div>
+            <div className="border-t border-gray-100 dark:border-gray-800 p-3">
+              <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Quarterly Instalments</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {PROV_QUARTERS.map(([q, d]) => (
+                  <div key={q} className="rounded-lg bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800 px-2 py-2 text-center">
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500">{q} · {d}</p>
+                    <p className="text-sm font-semibold tabular-nums text-gray-900 dark:text-white mt-0.5">{fmtN(Math.round(res.quarterly))}</p>
+                  </div>
+                ))}
               </div>
-            )}
-          </CalcCard>
-          <CalcCard title="Target Tax → Required Profit">
-            <MoneyInput label="Desired Annual Tax (TZS)" value={cTarget} onChange={onCTarget} />
-            <CalcButton onClick={() => { const profit = cTargetN / corpRate; setCRevRes({ profit }); flash(setCRevFlash); }}>Calculate</CalcButton>
-            {cRevRes && (
-              <div className="space-y-0.5">
-                <ResultRow label="Required Annual Profit" value={fmt(cRevRes.profit)} color="blue" flash={cRevFlash} />
-              </div>
-            )}
-          </CalcCard>
+            </div>
+          </div>
+        )}
+
+        {/* Reverse result */}
+        {res?.kind === 'reverse' && (
+          <div className={cn('rounded-xl border border-gray-100 dark:border-gray-800 overflow-hidden grid grid-cols-2 divide-x divide-gray-100 dark:divide-gray-800 transition-colors duration-500', flash && 'bg-yellow-50 dark:bg-yellow-900/10')}>
+            <div className="px-3 py-4 text-center">
+              <p className="text-base sm:text-lg font-bold tabular-nums text-blue-700 dark:text-blue-400 leading-tight break-words">{fmtN(Math.round(res.profit))}</p>
+              <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-1">Required Annual Profit</p>
+            </div>
+            <div className="px-3 py-4 text-center">
+              <p className="text-base sm:text-lg font-bold tabular-nums text-gray-900 dark:text-white leading-tight break-words">{fmtN(Math.round(res.quarterly))}</p>
+              <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-1">Per Quarter</p>
+            </div>
+          </div>
+        )}
+      </CalcCard>
+
+      {/* Reference — bands (individual) or flat-rate note (corporate) */}
+      {isCorp ? (
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Flat {(corpRate * 100).toFixed(0)}% on all taxable profit</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">No bands for companies — configurable in Settings → Tax Rates.</p>
+          </div>
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Quarterly instalments due: <strong>31 Mar · 30 Jun · 30 Sep · 31 Dec</strong></p>
-      </div>
+      ) : (
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+            <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Individual Tax Bands · Annual</h4>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-gray-800/60">
+                <tr>
+                  <th className="text-left px-4 py-2 text-gray-500 font-semibold whitespace-nowrap">Annual Income (TZS)</th>
+                  <th className="text-right px-4 py-2 text-gray-500 font-semibold whitespace-nowrap">Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {provBands.map((b, i) => (
+                  <tr key={i} className={cn('border-t border-gray-100 dark:border-gray-800 transition-colors', i === activeBand && 'bg-blue-50 dark:bg-blue-900/20')}>
+                    <td className="px-4 py-2 text-gray-700 dark:text-gray-300 tabular-nums whitespace-nowrap">
+                      {fmtN(b.min)}{b.max != null && b.max !== Infinity ? ` – ${fmtN(b.max)}` : ' and above'}
+                    </td>
+                    <td className="px-4 py-2 text-right whitespace-nowrap">
+                      <span className={cn('font-semibold tabular-nums', b.rate === 0 ? 'text-gray-400 dark:text-gray-500' : 'text-blue-700 dark:text-blue-400')}>{(b.rate * 100).toFixed(0)}%</span>
+                      {i === activeBand && <span className="ml-2 text-[10px] font-bold text-blue-600 dark:text-blue-300">◄ your band</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Due dates */}
+      <p className="text-xs text-gray-500 dark:text-gray-400 px-1">
+        Quarterly instalments due: <strong className="text-gray-700 dark:text-gray-300">31 Mar · 30 Jun · 30 Sep · 31 Dec</strong>. Rates configurable in Settings → Tax Rates.
+      </p>
     </div>
   );
 }
@@ -467,10 +529,10 @@ function PayslipSection({ taxRates }) {
       if (type === 'png') await exportToPng(voucherRef, fname);
       else {
         const html = `
-          ${res.company ? `<p style="text-align:center;font-weight:700;font-size:13px;margin-bottom:4px;">${res.company}</p>` : ''}
+          ${res.company ? `<p style="text-align:center;font-weight:700;font-size:13px;margin-bottom:4px;">${escapeHtml(res.company)}</p>` : ''}
           <h2 style="text-align:center;">SALARY VOUCHER</h2>
-          <p style="text-align:center;margin-bottom:12px;">MONTH OF ${res.month.toUpperCase()}</p>
-          ${res.empName ? `<p style="margin-bottom:8px;"><strong>NAME:</strong> ${res.empName}</p>` : ''}
+          <p style="text-align:center;margin-bottom:12px;">MONTH OF ${escapeHtml(res.month.toUpperCase())}</p>
+          ${res.empName ? `<p style="margin-bottom:8px;"><strong>NAME:</strong> ${escapeHtml(res.empName)}</p>` : ''}
           <table>
             <tbody>
               <tr><td>BASIC SALARY</td><td class="num">${fmtN(res.basicN)}</td></tr>
@@ -499,7 +561,7 @@ function PayslipSection({ taxRates }) {
               <tr class="ctc"><td>TOTAL CTC</td><td class="num">${fmtN(res.totalCTC)}</td></tr>
             </tbody>
           </table>`;
-        const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${fname}</title><style>@page{size:A5 portrait;margin:15mm;}body{font-family:Arial,sans-serif;color:#111;font-size:11px;margin:0;}h2{margin:0 0 2px;font-size:13px;text-align:center;}p{margin:0 0 4px;}table{border-collapse:collapse;width:100%;}td{padding:3px 6px;border:1px solid #aaa;font-size:11px;}td.num{text-align:right;font-family:monospace;}tr.total td{font-weight:700;background:#f3f4f6;border-top:2px solid #000;}tr.net td{font-weight:700;font-size:13px;background:#d1fae5;border-top:2px solid #000;}tr.ctc td{font-weight:700;background:#dbeafe;border-top:2px solid #1d4ed8;}tr.spacer td{border:none;height:6px;}tr.section-hdr td{font-weight:700;background:#e5e7eb;}</style></head><body>${html}</body></html>`;
+        const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(fname)}</title><style>@page{size:A5 portrait;margin:15mm;}body{font-family:Arial,sans-serif;color:#111;font-size:11px;margin:0;}h2{margin:0 0 2px;font-size:13px;text-align:center;}p{margin:0 0 4px;}table{border-collapse:collapse;width:100%;}td{padding:3px 6px;border:1px solid #aaa;font-size:11px;}td.num{text-align:right;font-family:monospace;}tr.total td{font-weight:700;background:#f3f4f6;border-top:2px solid #000;}tr.net td{font-weight:700;font-size:13px;background:#d1fae5;border-top:2px solid #000;}tr.ctc td{font-weight:700;background:#dbeafe;border-top:2px solid #1d4ed8;}tr.spacer td{border:none;height:6px;}tr.section-hdr td{font-weight:700;background:#e5e7eb;}</style></head><body>${html}</body></html>`;
         const w = window.open('', '_blank', 'width=480,height=700');
         if (!w) return;
         w.document.write(fullHtml);
@@ -913,7 +975,7 @@ function CityLevySection({ taxRates }) {
           </table>
           <p class="sub" style="margin-top:10px;">Due: ${res.dueDate} ${res.year}</p>
         `;
-        const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${fname}</title><style>@page{size:A5 portrait;margin:10mm;}body{font-family:Arial,sans-serif;margin:0;color:#111827;font-size:11px;}h2{margin:0 0 2px;font-size:13px;}p.sub{margin:0 0 8px;font-size:10px;color:#6b7280;}table{border-collapse:collapse;width:100%;}th,td{padding:4px 8px;border:1px solid #d1d5db;font-size:11px;}th{background:#f3f4f6;font-weight:600;text-align:left;}td.num{text-align:right;font-family:monospace;}td.code{text-align:center;font-weight:700;background:#f9fafb;}td.section{background:#e5e7eb;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.04em;}tr.subtotal td{background:#fef3c7;}tr.total td{background:#dbeafe;font-weight:700;}tr.levy td{background:#d1fae5;font-weight:700;}td.levy-num{font-size:13px;font-weight:700;}</style></head><body>${html}</body></html>`;
+        const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(fname)}</title><style>@page{size:A5 portrait;margin:10mm;}body{font-family:Arial,sans-serif;margin:0;color:#111827;font-size:11px;}h2{margin:0 0 2px;font-size:13px;}p.sub{margin:0 0 8px;font-size:10px;color:#6b7280;}table{border-collapse:collapse;width:100%;}th,td{padding:4px 8px;border:1px solid #d1d5db;font-size:11px;}th{background:#f3f4f6;font-weight:600;text-align:left;}td.num{text-align:right;font-family:monospace;}td.code{text-align:center;font-weight:700;background:#f9fafb;}td.section{background:#e5e7eb;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:0.04em;}tr.subtotal td{background:#fef3c7;}tr.total td{background:#dbeafe;font-weight:700;}tr.levy td{background:#d1fae5;font-weight:700;}td.levy-num{font-size:13px;font-weight:700;}</style></head><body>${html}</body></html>`;
         const w = window.open('', '_blank', 'width=600,height=500');
         if (!w) return;
         w.document.write(fullHtml);
@@ -1111,27 +1173,36 @@ const DEPR_EXAMPLES = [
   ['Commercial / office building', '6', 0.05],
 ];
 
+// Human-readable rate for a class row: "37.5%", "100%", or "1 ÷ life"
+function deprRateText(c) {
+  if (c.rate === null) return '1 ÷ life';
+  if (c.rate === 1)    return '100%';
+  return `${parseFloat((c.rate * 100).toFixed(2))}%`;
+}
+
 function DepreciationSection() {
-  const [cost, setCost] = useState('');
-  const [cls, setCls] = useState('1');
-  const [years, setYears] = useState(5);
+  const [cost, onCost, costN] = useMoneyInput('');
+  const [cls, setCls]         = useState('1');
+  const [years, setYears]     = useState(5);
   const [usefulLife, setUsefulLife] = useState(5);
-  const [table, setTable] = useState(null);
+  const [table, setTable]     = useState(null);
+  const [flash, setFlash]     = useState(false);
+  const [showRef, setShowRef] = useState(false);
+  const resultRef = useRef(null);
 
   const selected = DEPR_CLASSES.find(c => c.cls === cls);
-  const rate = selected?.rate;
-  const method = selected?.method;
+  const rate     = selected?.rate;
+  const method   = selected?.method;
 
   function handleCalculate() {
-    const cost0 = parseFloat(cost.replace(/,/g, ''));
-    if (!cost0 || cost0 <= 0) { alert('Enter a valid cost.'); return; }
+    if (!costN || costN <= 0) { alert('Enter a valid asset cost.'); return; }
     const r = cls === '7' ? 1 / usefulLife : rate;
     const rows = [];
-    let nbv = cost0;
+    let nbv = costN;
     const n = cls === '8' ? 1 : years;
     for (let y = 1; y <= n; y++) {
       const depr = method === 'Straight-line' || cls === '8'
-        ? Math.min(cost0 * r, nbv)
+        ? Math.min(costN * r, nbv)
         : nbv * r;
       const rounded = Math.round(depr);
       const closingNbv = Math.max(0, Math.round(nbv - depr));
@@ -1139,139 +1210,197 @@ function DepreciationSection() {
       nbv = closingNbv;
       if (nbv === 0) break;
     }
-    setTable({ rows, cost0, cls, method, r });
+    setTable({ rows, cost0: costN, cls, method, r });
+    setFlash(true);
+    setTimeout(() => setFlash(false), 700);
+    setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
   }
+
+  const totalDepr = table ? table.rows.reduce((s, r) => s + r.depr, 0) : 0;
+  const finalNbv  = table ? table.rows[table.rows.length - 1].closingNbv : 0;
+  const pctOff    = table && table.cost0 ? Math.round((totalDepr / table.cost0) * 100) : 0;
+
+  const fieldCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition';
 
   return (
     <div className="space-y-5">
-      {/* Class reference table */}
-      <div>
-        <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Tanzania Capital Allowance Classes (ITA Cap.332)</h3>
-        <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-          <table className="w-full text-xs">
-            <thead className="bg-gray-50 dark:bg-gray-800/60">
-              <tr>
-                <th className="text-left px-3 py-2 text-gray-500 font-semibold">Class</th>
-                <th className="text-left px-3 py-2 text-gray-500 font-semibold">Method</th>
-                <th className="text-right px-3 py-2 text-gray-500 font-semibold">Rate</th>
-                <th className="text-left px-3 py-2 text-gray-500 font-semibold">Asset Types</th>
-              </tr>
-            </thead>
-            <tbody>
-              {DEPR_CLASSES.map(c => (
-                <tr key={c.cls} className="border-t border-gray-100 dark:border-gray-800">
-                  <td className="px-3 py-2 font-bold text-blue-700 dark:text-blue-400">Class {c.cls}</td>
-                  <td className="px-3 py-2 text-gray-600 dark:text-gray-300 whitespace-nowrap">{c.method}</td>
-                  <td className="px-3 py-2 text-right font-semibold tabular-nums text-gray-900 dark:text-white whitespace-nowrap">
-                    {c.rate === 1 ? '100%' : c.rate === null ? '1 ÷ life' : `${(c.rate*100)}%`}
-                  </td>
-                  <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{c.assets}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Calculator */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 space-y-4">
-        <h3 className="text-sm font-bold text-gray-900 dark:text-white">Depreciation Schedule Calculator</h3>
+      {/* ── Calculator ─────────────────────────────────────────────────── */}
+      <CalcCard title="Depreciation Schedule Calculator">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="space-y-1 col-span-2 sm:col-span-1">
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Asset Cost</label>
-            <input type="text" inputMode="numeric" value={cost}
-              onChange={e => {
-                const digits = e.target.value.replace(/[^0-9]/g, '');
-                const formatted = digits ? parseInt(digits, 10).toLocaleString('en-US') : '';
-                setCost(formatted);
-              }}
-              placeholder="0"
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+          <div className="col-span-2">
+            <MoneyInput label="Asset Cost (TZS)" value={cost} onChange={onCost} />
           </div>
           <div className="space-y-1">
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Class</label>
-            <select value={cls} onChange={e => setCls(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
-              {DEPR_CLASSES.map(c => <option key={c.cls} value={c.cls}>Class {c.cls} — {c.rate===null?'1÷life':c.rate===1?'100%':`${c.rate*100}%`}</option>)}
+            <select value={cls} onChange={e => setCls(e.target.value)} className={fieldCls}>
+              {DEPR_CLASSES.map(c => <option key={c.cls} value={c.cls}>Class {c.cls} — {deprRateText(c)}</option>)}
             </select>
           </div>
           {cls === '7' ? (
             <div className="space-y-1">
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Useful Life (yrs)</label>
-              <input type="number" min={1} value={usefulLife} onChange={e => setUsefulLife(parseInt(e.target.value)||1)}
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+              <input type="number" min={1} value={usefulLife} onChange={e => setUsefulLife(parseInt(e.target.value) || 1)} className={fieldCls} />
             </div>
-          ) : cls !== '8' && (
+          ) : cls !== '8' ? (
             <div className="space-y-1">
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Years to project</label>
-              <input type="number" min={1} max={50} value={years} onChange={e => setYears(parseInt(e.target.value)||1)}
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+              <input type="number" min={1} max={50} value={years} onChange={e => setYears(parseInt(e.target.value) || 1)} className={fieldCls} />
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Period</label>
+              <div className="px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/60 text-sm text-gray-500 dark:text-gray-400 border border-transparent">Immediate</div>
             </div>
           )}
         </div>
-        {selected && (
-          <p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-2">
-            <span className="font-semibold text-blue-600 dark:text-blue-400">Class {cls}</span> · {method} · Rate: {rate===null?`${(1/usefulLife*100).toFixed(2)}%`:rate===1?'100%':`${rate*100}%`} · {selected.assets}
-          </p>
-        )}
-        <CalcButton onClick={handleCalculate}>Generate Schedule</CalcButton>
-      </div>
 
-      {/* Result table */}
+        {/* Selected-class summary */}
+        {selected && (
+          <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 px-3.5 py-3 space-y-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-600 text-white">Class {cls}</span>
+              <RateBadge
+                rate={cls === '7' ? 1 / usefulLife : (rate ?? 0)}
+                label={cls === '7' ? `${(100 / usefulLife).toFixed(2).replace(/\.?0+$/, '')}%` : rate === 1 ? '100%' : undefined}
+              />
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{method}</span>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{selected.assets}</p>
+          </div>
+        )}
+
+        <CalcButton onClick={handleCalculate}>Generate Schedule</CalcButton>
+      </CalcCard>
+
+      {/* ── Result ─────────────────────────────────────────────────────── */}
       {table && (
-        <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-gray-800/60">
-              <tr>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500">Year</th>
-                <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500">Opening NBV (TZS)</th>
-                <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500">Depreciation (TZS)</th>
-                <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500">Closing NBV (TZS)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {table.rows.map(r => (
-                <tr key={r.year} className="border-t border-gray-100 dark:border-gray-800">
-                  <td className="px-4 py-2 text-gray-700 dark:text-gray-300 font-medium">Year {r.year}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-gray-900 dark:text-white">{fmtN(r.openingNbv)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-red-600 dark:text-red-400 font-semibold">{fmtN(r.depr)}</td>
-                  <td className={cn('px-4 py-2 text-right tabular-nums font-semibold', r.closingNbv === 0 ? 'text-gray-400' : 'text-gray-900 dark:text-white')}>{fmtN(r.closingNbv)}</td>
+        <div ref={resultRef} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+          {/* Highlight strip */}
+          <div className={cn('grid grid-cols-3 divide-x divide-gray-100 dark:divide-gray-800 transition-colors duration-500', flash && 'bg-yellow-50 dark:bg-yellow-900/10')}>
+            {[
+              { label: 'Total Depreciation', value: fmtN(totalDepr), color: 'text-red-600 dark:text-red-400' },
+              { label: 'Remaining Book Value', value: fmtN(finalNbv), color: 'text-gray-900 dark:text-white' },
+              { label: '% Written Off', value: `${pctOff}%`, color: 'text-green-600 dark:text-green-400' },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="px-3 py-4 text-center">
+                <p className={cn('text-base sm:text-xl font-bold tabular-nums leading-tight break-words', color)}>{value}</p>
+                <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-1">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Year-by-year schedule */}
+          <div className="overflow-x-auto border-t border-gray-100 dark:border-gray-800">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-800/60">
+                <tr>
+                  <th className="text-left  px-4 py-2.5 text-xs font-semibold text-gray-500 whitespace-nowrap">Year</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 whitespace-nowrap">Opening NBV</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 whitespace-nowrap">Depreciation</th>
+                  <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 whitespace-nowrap">Closing NBV</th>
                 </tr>
-              ))}
-              <tr className="border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50">
-                <td className="px-4 py-2 font-bold text-gray-900 dark:text-white">Total</td>
-                <td className="px-4 py-2"></td>
-                <td className="px-4 py-2 text-right tabular-nums font-bold text-red-700 dark:text-red-400">{fmtN(table.rows.reduce((s,r)=>s+r.depr,0))}</td>
-                <td className="px-4 py-2"></td>
-              </tr>
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {table.rows.map(r => (
+                  <tr key={r.year} className="border-t border-gray-100 dark:border-gray-800 hover:bg-gray-50/60 dark:hover:bg-gray-800/30 transition-colors">
+                    <td className="px-4 py-2.5 text-gray-700 dark:text-gray-300 font-medium whitespace-nowrap">Year {r.year}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-gray-600 dark:text-gray-300">{fmtN(r.openingNbv)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-red-600 dark:text-red-400 font-semibold">{fmtN(r.depr)}</td>
+                    <td className={cn('px-4 py-2.5 text-right tabular-nums font-semibold', r.closingNbv === 0 ? 'text-gray-400 dark:text-gray-600' : 'text-gray-900 dark:text-white')}>{fmtN(r.closingNbv)}</td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                  <td className="px-4 py-2.5 font-bold text-gray-900 dark:text-white">Total</td>
+                  <td className="px-4 py-2.5" />
+                  <td className="px-4 py-2.5 text-right tabular-nums font-bold text-red-700 dark:text-red-400">{fmtN(totalDepr)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-gray-500 dark:text-gray-400">{fmtN(finalNbv)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="px-4 py-2.5 text-[11px] text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-800">
+            {table.method === 'Diminishing' ? 'Diminishing-balance basis — rate applied to the reducing net book value each year.' : table.cls === '8' ? 'Class 8 — full write-off in the year of purchase.' : 'Straight-line basis — equal charge on cost each year.'} All amounts in TZS.
+          </p>
         </div>
       )}
 
-      {/* Common assets quick ref */}
-      <div>
-        <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Common Assets Quick Reference</h3>
-        <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-          <table className="w-full text-xs">
-            <thead className="bg-gray-50 dark:bg-gray-800/60">
-              <tr>
-                <th className="text-left px-3 py-2 text-gray-500 font-semibold">Asset</th>
-                <th className="text-center px-3 py-2 text-gray-500 font-semibold">Class</th>
-                <th className="text-right px-3 py-2 text-gray-500 font-semibold">Rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {DEPR_EXAMPLES.map(([asset, c, r]) => (
-                <tr key={asset} className="border-t border-gray-100 dark:border-gray-800">
-                  <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{asset}</td>
-                  <td className="px-3 py-2 text-center font-semibold text-blue-700 dark:text-blue-400">{c}</td>
-                  <td className="px-3 py-2 text-right tabular-nums font-semibold text-gray-900 dark:text-white">{r*100}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {/* ── Reference (collapsible) ────────────────────────────────────── */}
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
+        <button
+          onClick={() => setShowRef(v => !v)}
+          className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
+        >
+          <span className="flex items-center gap-2 min-w-0">
+            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200 truncate">Capital Allowance Reference</span>
+            <span className="hidden sm:inline text-xs text-gray-400 dark:text-gray-500">· ITA Cap.332</span>
+          </span>
+          <svg className={cn('w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200', showRef && 'rotate-180')} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {showRef && (
+          <div className="px-4 pb-4 pt-1 space-y-5">
+            {/* Classes */}
+            <div>
+              <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Classes &amp; Rates</h4>
+              <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 dark:bg-gray-800/60">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-gray-500 font-semibold whitespace-nowrap">Class</th>
+                      <th className="text-left px-3 py-2 text-gray-500 font-semibold whitespace-nowrap">Method</th>
+                      <th className="text-right px-3 py-2 text-gray-500 font-semibold whitespace-nowrap">Rate</th>
+                      <th className="text-left px-3 py-2 text-gray-500 font-semibold">Asset Types</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {DEPR_CLASSES.map(c => (
+                      <tr key={c.cls} className="border-t border-gray-100 dark:border-gray-800">
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">Class {c.cls}</span>
+                        </td>
+                        <td className="px-3 py-2 text-gray-600 dark:text-gray-300 whitespace-nowrap">{c.method}</td>
+                        <td className="px-3 py-2 text-right font-semibold tabular-nums text-gray-900 dark:text-white whitespace-nowrap">{deprRateText(c)}</td>
+                        <td className="px-3 py-2 text-gray-500 dark:text-gray-400 min-w-[220px]">{c.assets}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Common assets */}
+            <div>
+              <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Common Assets — Quick Lookup</h4>
+              <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 dark:bg-gray-800/60">
+                    <tr>
+                      <th className="text-left  px-3 py-2 text-gray-500 font-semibold">Asset</th>
+                      <th className="text-center px-3 py-2 text-gray-500 font-semibold whitespace-nowrap">Class</th>
+                      <th className="text-right px-3 py-2 text-gray-500 font-semibold whitespace-nowrap">Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {DEPR_EXAMPLES.map(([asset, c, r]) => (
+                      <tr key={asset} className="border-t border-gray-100 dark:border-gray-800">
+                        <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{asset}</td>
+                        <td className="px-3 py-2 text-center whitespace-nowrap">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">{c}</span>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums font-semibold text-gray-900 dark:text-white whitespace-nowrap">{parseFloat((r * 100).toFixed(2))}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

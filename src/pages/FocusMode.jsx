@@ -29,8 +29,38 @@ function taxBadgeClass(type) {
 // ─── Tax Deadline Card ─────────────────────────────────────────────────────────
 
 function DeadlineCard({ deadline, clients, taxReturns }) {
+  const { dispatch, showToast } = useApp();
   const [open, setOpen] = useState(false);
   const days = deadline.daysRemaining;
+
+  // Mark a client's return complete (or reopen it) for this exact type + period.
+  function setClientDone(client, done) {
+    const existing = taxReturns.find(
+      tr => tr.clientId === client.id && tr.taxType === deadline.type && tr.period === deadline.period
+    );
+    dispatch({
+      type: 'UPSERT_TAX_RETURN',
+      payload: {
+        ...(existing || {}),
+        clientId: client.id,
+        taxType:  deadline.type,
+        period:   deadline.period,
+        status:   done ? 'completed' : 'pending',
+        completedAt: done ? new Date().toISOString() : null,
+      },
+    });
+  }
+
+  function toggleClient(client, isDone) {
+    setClientDone(client, !isDone);
+    if (!isDone) {
+      showToast(
+        `${client.name} — ${TAX_TYPES[deadline.type] ?? deadline.type} ${deadline.periodLabel} marked done`,
+        'Undo',
+        () => setClientDone(client, false)
+      );
+    }
+  }
 
   // Clients who have this tax type (WHT is on-demand: only clients with actual records)
   const relevantClients = useMemo(() => {
@@ -53,6 +83,17 @@ function DeadlineCard({ deadline, clients, taxReturns }) {
 
   const pending = relevantClients.filter(c => !completedIds.has(c.id));
   const done    = relevantClients.filter(c => completedIds.has(c.id));
+
+  function markAllDone() {
+    const batch = pending.slice();
+    if (!batch.length) return;
+    batch.forEach(c => setClientDone(c, true));
+    showToast(
+      `${batch.length} ${TAX_TYPES[deadline.type] ?? deadline.type} ${deadline.periodLabel} filing${batch.length > 1 ? 's' : ''} marked done`,
+      'Undo',
+      () => batch.forEach(c => setClientDone(c, false))
+    );
+  }
 
   return (
     <div className={cn('rounded-xl border p-4 transition-all', urgencyClass(days))}>
@@ -92,30 +133,56 @@ function DeadlineCard({ deadline, clients, taxReturns }) {
 
       {/* Pending clients summary */}
       {pending.length > 0 && (
-        <button
-          className="mt-2 w-full text-left text-xs font-medium hover:underline flex items-center gap-1"
-          onClick={() => setOpen(o => !o)}
-        >
-          <span>{open ? '▲' : '▼'}</span>
-          {pending.length} pending: {pending.slice(0, 3).map(c => c.name.split(' ')[0]).join(', ')}{pending.length > 3 ? ` +${pending.length - 3}` : ''}
-        </button>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <button
+            className="min-w-0 text-left text-xs font-medium hover:underline flex items-center gap-1"
+            onClick={() => setOpen(o => !o)}
+          >
+            <span className="flex-shrink-0">{open ? '▲' : '▼'}</span>
+            <span className="truncate">{pending.length} pending: {pending.slice(0, 3).map(c => c.name.split(' ')[0]).join(', ')}{pending.length > 3 ? ` +${pending.length - 3}` : ''}</span>
+          </button>
+          <button
+            onClick={markAllDone}
+            className="flex-shrink-0 flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-md bg-white/70 dark:bg-black/25 hover:bg-white dark:hover:bg-black/40 border border-gray-300/60 dark:border-gray-600/50 transition whitespace-nowrap"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+            Mark all done
+          </button>
+        </div>
       )}
 
       {open && (
-        <ul className="mt-2 space-y-0.5">
-          {pending.map(c => (
-            <li key={c.id} className="flex items-center gap-1.5 text-xs py-0.5">
-              <span className="w-2 h-2 rounded-full bg-current opacity-50 flex-shrink-0" />
-              {c.name}
-            </li>
-          ))}
-          {done.map(c => (
-            <li key={c.id} className="flex items-center gap-1.5 text-xs py-0.5 opacity-50 line-through">
-              <span className="w-2 h-2 rounded-full bg-current flex-shrink-0" />
-              {c.name}
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="mt-2 space-y-0.5">
+            {pending.map(c => (
+              <li key={c.id}>
+                <button
+                  onClick={() => toggleClient(c, false)}
+                  className="group w-full flex items-center gap-2 text-left text-xs py-1 px-1 rounded hover:bg-white/50 dark:hover:bg-black/20 transition"
+                >
+                  <span className="w-4 h-4 rounded-full border-2 border-current opacity-40 group-hover:opacity-100 group-hover:border-green-500 dark:group-hover:border-green-400 flex-shrink-0 flex items-center justify-center transition">
+                    <svg className="w-2.5 h-2.5 text-green-500 dark:text-green-400 opacity-0 group-hover:opacity-100 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                  </span>
+                  <span>{c.name}</span>
+                </button>
+              </li>
+            ))}
+            {done.map(c => (
+              <li key={c.id}>
+                <button
+                  onClick={() => toggleClient(c, true)}
+                  className="group w-full flex items-center gap-2 text-left text-xs py-1 px-1 rounded hover:bg-white/50 dark:hover:bg-black/20 transition"
+                >
+                  <span className="w-4 h-4 rounded-full bg-green-500 border-2 border-green-500 text-white flex-shrink-0 flex items-center justify-center">
+                    <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                  </span>
+                  <span className="line-through opacity-60">{c.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1.5 text-[10px] opacity-60">Tap a client to mark their {TAX_TYPES[deadline.type] ?? deadline.type} filing done.</p>
+        </>
       )}
 
       {pending.length === 0 && relevantClients.length > 0 && (

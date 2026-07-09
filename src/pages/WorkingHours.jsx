@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext.jsx';
-import { cn } from '../utils/index.js';
+import { cn, escapeHtml } from '../utils/index.js';
 import { ConfirmDialog } from '../components/UI.jsx';
 // â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -597,7 +597,7 @@ export default function WorkingHours() {
       const isTotal = ri === rows.length - 1;
       const bg = isTotal ? '#f9fafb' : ri % 2 === 0 ? '#ffffff' : '#f9fafb';
       const fw = isTotal ? '700' : '400';
-      return `<tr>${r.map((cell, ci) => `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};font-weight:${ci === 6 || isTotal ? fw : '400'};color:${isTotal && ci === 6 ? '#059669' : '#111827'};">${cell}</td>`).join('')}</tr>`;
+      return `<tr>${r.map((cell, ci) => `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};font-weight:${ci === 6 || isTotal ? fw : '400'};color:${isTotal && ci === 6 ? '#059669' : '#111827'};">${escapeHtml(cell)}</td>`).join('')}</tr>`;
     }).join('');
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Working Hours – ${weekKey}</title>

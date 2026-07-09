@@ -30,6 +30,7 @@ In **Supabase Dashboard → Edge Functions → Secrets**, add:
 | `TELEGRAM_BOT_TOKEN` | Your bot token from BotFather |
 | `TELEGRAM_CHAT_ID` | Your chat ID (numeric) |
 | `APP_USER_ID` | Your Supabase auth user ID (find in Auth → Users) |
+| `TELEGRAM_WEBHOOK_SECRET` | A long random string (e.g. run `openssl rand -hex 32`). Telegram sends it back on every webhook call; the function rejects requests without it, so nobody can forge bot commands by POSTing to the function URL directly. |
 
 > `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically.
 
@@ -40,12 +41,16 @@ supabase functions deploy telegram-webhook
 ```
 
 ### 4. Register the Webhook with Telegram
-Replace `<TOKEN>` and `<PROJECT_REF>` then visit this URL in your browser once:
+Replace `<TOKEN>`, `<PROJECT_REF>` and `<WEBHOOK_SECRET>` (the same value you saved as the `TELEGRAM_WEBHOOK_SECRET` secret in step 2), then visit this URL in your browser once:
 ```
-https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<PROJECT_REF>.supabase.co/functions/v1/telegram-webhook
+https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<PROJECT_REF>.supabase.co/functions/v1/telegram-webhook&secret_token=<WEBHOOK_SECRET>
 ```
 
 You should get: `{"ok":true,"result":true,"description":"Webhook was set"}`
+
+> **Why the secret matters:** the webhook is deployed with `--no-verify-jwt`, so its URL is publicly reachable. The `secret_token` makes Telegram send an `X-Telegram-Bot-Api-Secret-Token` header on every delivery; the function rejects any request without it. The function additionally ignores messages from any chat other than `TELEGRAM_CHAT_ID`.
+>
+> **Already deployed without the secret?** Set the `TELEGRAM_WEBHOOK_SECRET` secret, redeploy the function, then re-run the `setWebhook` URL above. The function only enforces the header once the secret is configured, so nothing breaks in between.
 
 ### 5. Schedule the Morning Brief (Cron)
 Run this SQL in **Supabase SQL Editor**:

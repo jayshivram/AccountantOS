@@ -691,15 +691,78 @@ code {
 
     <div class="callout info">
       <div class="callout-title">How to create the ROE Voucher Type (one-time setup)</div>
-      <strong>1.</strong> Go to <kbd>Gateway of Tally</kbd> → <kbd>Accounts Info</kbd> → <kbd>Voucher Types</kbd> → <kbd>Create</kbd><br><br>
-      <strong>2.</strong> Fill in the following fields:<br>
-      &nbsp;&nbsp;&nbsp;• <strong>Name:</strong> <code>ROE</code><br>
-      &nbsp;&nbsp;&nbsp;• <strong>Type of Voucher:</strong> <code>Journal</code><br>
-      &nbsp;&nbsp;&nbsp;• <strong>Abbreviation:</strong> <code>ROE</code><br>
-      &nbsp;&nbsp;&nbsp;• <strong>Use for forex revaluation:</strong> <code>Yes</code><br>
-      &nbsp;&nbsp;&nbsp;• <strong>Default Voucher Class:</strong> Leave blank or set to <code>ROE</code><br><br>
-      <strong>3.</strong> Save. The ROE voucher type will now appear in the Accounting Vouchers screen and can be accessed via <kbd>F10: Rev Jml</kbd>.<br><br>
-      <strong>Note:</strong> If <kbd>F10: Rev Jml</kbd> does not appear in Accounting Vouchers, go to <kbd>F11: Features</kbd> → <kbd>Accounting Features</kbd> → set <strong>Allow multi-currency</strong> to <code>Yes</code>. Save and re-enter Accounting Vouchers.
+      This is a one-time configuration. Once created, the same ROE voucher type is reused for every year-end forex adjustment. It requires a dedicated ledger and a voucher class linked to that ledger.
+    </div>
+
+    <h3>A · Create the &ldquo;Gain/(Loss) On Exchange&rdquo; ledger</h3>
+    <p>Go to <kbd>Gateway of Tally</kbd> → <kbd>Accounts Info</kbd> → <kbd>Ledgers</kbd> → <kbd>Create</kbd> and set:</p>
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          <tr><td style="width:38%"><strong>Name</strong></td><td><code>Gain/(Loss) On Exchange</code></td></tr>
+          <tr><td><strong>Under (Group)</strong></td><td><code>Indirect Expenses</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Save the ledger.</p>
+
+    <h3>B · Enable Multi-Currency</h3>
+    <p>Before creating the voucher type, make sure <strong>Multi-Currency</strong> is turned on: <kbd>F11: Features</kbd> → <kbd>Accounting Features</kbd> → set <strong>Allow multi-currency</strong> to <code>Yes</code>, then save.</p>
+
+    <h3>C · Create the ROE Voucher Type</h3>
+    <p>Go to <kbd>Gateway of Tally</kbd> → <kbd>Accounts Info</kbd> → <kbd>Voucher Types</kbd> → <kbd>Create</kbd>, then enter the settings below.</p>
+
+    <p><strong>General settings</strong></p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:55%">Field</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Name of Voucher</td><td><code>ROE</code></td></tr>
+          <tr><td>Type of Voucher</td><td><code>Journal</code></td></tr>
+          <tr><td>Abbreviation (Abbr.)</td><td><code>ROE</code></td></tr>
+          <tr><td>Method of Voucher Numbering</td><td><code>Automatic</code> or <code>Manual</code> (as preferred)</td></tr>
+          <tr><td>Use Advance Configuration</td><td><code>No</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>Voucher options</strong></p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:55%">Option</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Use Effective Dates for Vouchers</td><td><code>No</code></td></tr>
+          <tr><td>Make &ldquo;Optimal&rdquo; as Default</td><td><code>No</code></td></tr>
+          <tr><td>Use Common Narration</td><td><code>Yes</code></td></tr>
+          <tr><td>Narrations for Each Entry</td><td><code>No</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>Printing settings</strong></p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:55%">Option</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Print After Saving Voucher</td><td><code>No</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>Forex Gain/Loss adjustment class</strong> — under <strong>Name of Class</strong>, enter a class name (e.g. <code>ROE</code>) and set:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th style="width:55%">Option</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Use Class for Forex Gain/Loss Adjustments?</td><td><code>Yes</code></td></tr>
+          <tr><td>Ledger Selection</td><td><code>Gain/(Loss) On Exchange</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout ok">
+      <div class="callout-title">Save the voucher type</div>
+      Press <kbd>Enter</kbd> to accept all settings, then save. The <strong>ROE (Rate of Exchange)</strong> voucher is now ready for recording Forex Gain/Loss adjustment entries, and can be accessed from the Accounting Vouchers screen via <kbd>F10: Rev Jml</kbd>.
     </div>
 
     <h2>Step 2 — Post the ROE Voucher</h2>

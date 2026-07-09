@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { useApp, useClients } from '../context/AppContext.jsx';
 import {
   TAX_TYPES, TAX_TYPE_KEYS, uuid, cn, daysUntil, formatDate,
-  TASK_STATUS, PRIORITY, getStatusColor,
+  TASK_STATUS, PRIORITY, getStatusColor, escapeHtml,
 } from '../utils/index.js';
 import {
   Modal, ConfirmDialog, TaxTypeBadge, StatusBadge, CountdownBadge,
@@ -607,12 +607,12 @@ export default function Tasks() {
       const bg = ri % 2 === 0 ? '#ffffff' : '#f9fafb';
       const isDone = t.status === 'completed';
       const cells = [
-        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};${isDone ? 'text-decoration:line-through;color:#9ca3af;' : 'color:#111827;'}">${t.title}</td>`,
-        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};color:#374151;">${client ? client.name : '–'}</td>`,
-        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};color:#374151;">${t.taxType ? (TAX_TYPES[t.taxType] || t.taxType) : '–'}</td>`,
-        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};color:#374151;">${t.dueDate ? formatDate(t.dueDate) : '–'}</td>`,
-        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};color:#374151;">${statusLabel(t.status)}</td>`,
-        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};color:${priorityColor(t.priority)};font-weight:600;text-transform:uppercase;">${t.priority || 'medium'}</td>`,
+        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};${isDone ? 'text-decoration:line-through;color:#9ca3af;' : 'color:#111827;'}">${escapeHtml(t.title)}</td>`,
+        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};color:#374151;">${client ? escapeHtml(client.name) : '–'}</td>`,
+        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};color:#374151;">${t.taxType ? (TAX_TYPES[t.taxType] || escapeHtml(t.taxType)) : '–'}</td>`,
+        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};color:#374151;">${t.dueDate ? escapeHtml(formatDate(t.dueDate)) : '–'}</td>`,
+        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};color:#374151;">${escapeHtml(statusLabel(t.status))}</td>`,
+        `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};color:${priorityColor(t.priority)};font-weight:600;text-transform:uppercase;">${escapeHtml(t.priority || 'medium')}</td>`,
       ];
       return `<tr>${cells.join('')}</tr>`;
     }).join('') || `<tr><td colspan="6" style="padding:16px;text-align:center;color:#9ca3af;font-size:12px;border:1px solid #e5e7eb;">No tasks this week</td></tr>`;

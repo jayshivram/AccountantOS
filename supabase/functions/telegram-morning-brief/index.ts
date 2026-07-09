@@ -51,7 +51,13 @@ export function isActiveReturn(r: TaxReturn, clientMap: Map<string, Client>): bo
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
+  // Only the pg_cron job (which sends the service-role key as its bearer token,
+  // per README) may trigger the brief. The public anon key also passes Supabase's
+  // JWT gate, so without this check anyone with the app bundle could spam the bot.
+  if (req.headers.get('authorization') !== `Bearer ${SUPABASE_SRV}`) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
   try {
     const supa = createClient(SUPABASE_URL, SUPABASE_SRV);
     const { data, error } = await supa

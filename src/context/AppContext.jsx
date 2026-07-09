@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useRef, useState, useCallback } from 'react';
 import { INITIAL_CLIENTS, INITIAL_TAX_RETURNS, INITIAL_TASKS, DEFAULT_TAX_RATES, DEFAULT_MONTHLY_TASKS } from '../data/initialData.js';
-import { saveState, loadState, uuid, getUpcomingDeadlines, checkAndNotify, getLastSyncTs, setLastSyncTs } from '../utils/index.js';
+import { saveState, saveBackup, loadState, uuid, getUpcomingDeadlines, checkAndNotify, getLastSyncTs, setLastSyncTs } from '../utils/index.js';
 import { supabase } from '../lib/supabase.js';
 
 // ─── Initial State ─────────────────────────────────────────────────────────────
@@ -16,6 +16,7 @@ function getInitialState() {
       cancellations:        saved.cancellations         || [],
       notes:                saved.notes                 || [],
       pastebins:            saved.pastebins             || [],
+      documents:            saved.documents             || [],
       workingHours:         saved.workingHours          || {},
       hourFormat:           saved.hourFormat            || '24',
       monthlyWork:          saved.monthlyWork           || [],
@@ -36,6 +37,7 @@ function getInitialState() {
     cancellations:        [],
     notes:                [],
     pastebins:            [],
+    documents:            [],
     workingHours:         {},
     hourFormat:           '24',
     darkMode:             false,
@@ -172,11 +174,63 @@ function reducer(state, action) {
     case 'DELETE_PASTEBIN':
       return { ...state, pastebins: (state.pastebins || []).filter(p => p.id !== action.payload) };
 
+    // ── Documents (physical-custody tracking, personal) ──
+    case 'ADD_DOCUMENT': {
+      const now = new Date().toISOString();
+      const { note, ...fields } = action.payload;
+      const doc = {
+        id:         uuid(),
+        location:   'with_me',
+        otherLabel: '',
+        dueBackDate: '',
+        reference:  '',
+        notes:      '',
+        docType:    '',
+        clientId:   '',
+        clientName: '',
+        ...fields,
+        createdAt:  now,
+        updatedAt:  now,
+        history:    [{ location: fields.location || 'with_me', otherLabel: fields.otherLabel || '', at: now, note: note || 'Logged' }],
+      };
+      return { ...state, documents: [doc, ...(state.documents || [])] };
+    }
+    // Edit metadata only (name, type, client, reference, notes) — location/history untouched
+    case 'EDIT_DOCUMENT':
+      return {
+        ...state,
+        documents: (state.documents || []).map(d =>
+          d.id === action.payload.id ? { ...d, ...action.payload, updatedAt: new Date().toISOString() } : d
+        ),
+      };
+    // Hand-off: change current custody and append to the movement history
+    case 'MOVE_DOCUMENT': {
+      const now = new Date().toISOString();
+      const { id, location, otherLabel = '', dueBackDate = '', note = '' } = action.payload;
+      return {
+        ...state,
+        documents: (state.documents || []).map(d =>
+          d.id === id
+            ? {
+                ...d,
+                location,
+                otherLabel,
+                dueBackDate,
+                updatedAt: now,
+                history: [...(d.history || []), { location, otherLabel, at: now, note }],
+              }
+            : d
+        ),
+      };
+    }
+    case 'DELETE_DOCUMENT':
+      return { ...state, documents: (state.documents || []).filter(d => d.id !== action.payload) };
+
     // ── Import ──
     case 'IMPORT_DATA': {
       const { currentView, currentMonth, cancellations: _c, ...rest } = action.payload;
       // Never overwrite cancellations with a personal backup; they're managed separately.
-      return { ...state, ...rest, tallyProgress: rest.tallyProgress || [], tallyEnrollments: rest.tallyEnrollments || [], tallyAdHoc: rest.tallyAdHoc || [], notes: rest.notes || [], pastebins: rest.pastebins || [] };
+      return { ...state, ...rest, tallyProgress: rest.tallyProgress || [], tallyEnrollments: rest.tallyEnrollments || [], tallyAdHoc: rest.tallyAdHoc || [], notes: rest.notes || [], pastebins: rest.pastebins || [], documents: rest.documents || [] };
     }
 
     // ── Tally Progress ──
@@ -455,6 +509,7 @@ export function AppProvider({ userId, userEmail, children }) {
   useEffect(() => {
     const { currentView, currentMonth, ...persisted } = state;
     saveState(persisted);
+    saveBackup(persisted); // rolling daily snapshot (no-ops after the first write each day)
 
     const { cancellations: _c, ...personalData } = persisted;
 
@@ -695,5 +750,11 @@ export function useTallyRecord(clientId, year) {
 export function useCancellations() {
   const { state } = useApp();
   return [...state.cancellations].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+/** Returns all tracked documents, most-recently-updated first. */
+export function useDocuments() {
+  const { state } = useApp();
+  return [...(state.documents || [])].sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
 }
 

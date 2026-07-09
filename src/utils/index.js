@@ -404,6 +404,61 @@ export function setLastSyncTs(tsMs) {
   try { localStorage.setItem(SYNC_TS_KEY, String(tsMs)); } catch { /* ignore */ }
 }
 
+// ─── Rolling local backups ──────────────────────────────────────────────────────
+// Keeps up to MAX_BACKUPS dated snapshots in localStorage so data is never truly
+// lost even if the live state is corrupted or overwritten by a stale device.
+const BACKUP_PREFIX = 'accountant-os-bk-';
+const MAX_BACKUPS   = 5;
+
+/** All saved local backups, newest first: [{ key, date, size }]. */
+export function listBackups() {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(BACKUP_PREFIX)) {
+        const raw = localStorage.getItem(k);
+        out.push({ key: k, date: k.slice(BACKUP_PREFIX.length), size: raw ? raw.length : 0 });
+      }
+    }
+  } catch { /* ignore */ }
+  return out.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function pruneBackups(keep = MAX_BACKUPS) {
+  for (const b of listBackups().slice(keep)) {
+    try { localStorage.removeItem(b.key); } catch { /* ignore */ }
+  }
+}
+
+/** Write at most one snapshot per calendar day; keep the last MAX_BACKUPS.
+ *  Quota-safe and never throws — a failed backup must not break the app. */
+export function saveBackup(state) {
+  try {
+    const key = BACKUP_PREFIX + format(new Date(), 'yyyy-MM-dd');
+    if (localStorage.getItem(key)) return; // already backed up today
+    const { _syncedAt, ...clean } = state;
+    const payload = JSON.stringify({ ...clean, _backupAt: new Date().toISOString() });
+    try {
+      localStorage.setItem(key, payload);
+    } catch {
+      pruneBackups(1);                                  // quota — drop old snapshots
+      try { localStorage.setItem(key, payload); } catch { return; }
+    }
+    pruneBackups(MAX_BACKUPS);
+  } catch { /* swallow — backups are best-effort */ }
+}
+
+/** Parse a backup by key into a restorable state object (or null). */
+export function loadBackup(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { _backupAt, _syncedAt, ...clean } = JSON.parse(raw);
+    return clean;
+  } catch { return null; }
+}
+
 export function exportData(state) {
   const blob = new Blob([JSON.stringify({ ...state, exportedAt: new Date().toISOString() }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -484,6 +539,16 @@ export function checkAndNotify(state, deadlines) {
 }
 
 // ─── Misc ─────────────────────────────────────────────────────────────────────
+
+/** Escapes a value for safe interpolation into HTML strings (print/export windows). */
+export function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 export function cn(...classes) {
   return classes.filter(Boolean).join(' ');

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext.jsx';
-import { TAX_TYPES, TAX_TYPE_KEYS, TAX_COLORS, monthToQuarter, cn } from '../utils/index.js';
+import { TAX_TYPES, TAX_TYPE_KEYS, TAX_COLORS, monthToQuarter, cn, escapeHtml } from '../utils/index.js';
 import { TaxTypeBadge, StatusBadge } from '../components/UI.jsx';
 
 const MONTH_NAMES = [
@@ -308,7 +308,7 @@ export default function ExportPage() {
       const hRow = [th('5%', '#'), th('30%', 'Client'), ...pvCols.map(c => th(colW, c.label))].join('');
       const bRows = provPivotRows.map((r, ri) => {
         const bg = ri % 2 === 0 ? '#ffffff' : '#f9fafb';
-        return `<tr>${td(bg, 'color:#9ca3af;', ri + 1)}${td(bg, 'font-weight:600;color:#111827;', r.clientName)}${pvCols.map(c => td(bg, `text-align:center;color:${cellClr(r[c.field], c.doneVal)};`, cellVal(r[c.field], c.doneVal))).join('')}</tr>`;
+        return `<tr>${td(bg, 'color:#9ca3af;', ri + 1)}${td(bg, 'font-weight:600;color:#111827;', escapeHtml(r.clientName))}${pvCols.map(c => td(bg, `text-align:center;color:${cellClr(r[c.field], c.doneVal)};`, cellVal(r[c.field], c.doneVal))).join('')}</tr>`;
       }).join('') || `<tr><td colspan="${pvCols.length + 2}" style="padding:16px;text-align:center;color:#9ca3af;font-size:11px;border:1px solid #e5e7eb;">No data</td></tr>`;
       tableHTML = `<table><thead><tr>${hRow}</tr></thead><tbody>${bRows}</tbody></table>`;
 
@@ -320,7 +320,7 @@ export default function ExportPage() {
       const bRows = displayRows.map((r, ri) => {
         const bg = ri % 2 === 0 ? '#ffffff' : '#f9fafb';
         const sc = statusColors[r.status] || '#9ca3af';
-        return `<tr>${td(bg, 'color:#9ca3af;', ri + 1)}${td(bg, `font-weight:${r.isFirst ? '600' : '400'};color:#111827;`, r.clientName)}${td(bg, 'color:#374151;', r.periodLabel)}${cols.map(c => td(bg, `text-align:center;color:${cellClr(r[c.field], c.doneVal)};`, cellVal(r[c.field], c.doneVal))).join('')}${td(bg, `color:${sc};font-weight:600;`, statusLabels[r.status] || r.status)}</tr>`;
+        return `<tr>${td(bg, 'color:#9ca3af;', ri + 1)}${td(bg, `font-weight:${r.isFirst ? '600' : '400'};color:#111827;`, escapeHtml(r.clientName))}${td(bg, 'color:#374151;', escapeHtml(r.periodLabel))}${cols.map(c => td(bg, `text-align:center;color:${cellClr(r[c.field], c.doneVal)};`, cellVal(r[c.field], c.doneVal))).join('')}${td(bg, `color:${sc};font-weight:600;`, statusLabels[r.status] || escapeHtml(r.status))}</tr>`;
       }).join('') || `<tr><td colspan="${cols.length + 4}" style="padding:16px;text-align:center;color:#9ca3af;font-size:11px;border:1px solid #e5e7eb;">No data</td></tr>`;
       tableHTML = `<table><thead><tr>${hRow}</tr></thead><tbody>${bRows}</tbody></table>`;
 
@@ -342,16 +342,16 @@ export default function ExportPage() {
         const bg = ri % 2 === 0 ? '#ffffff' : '#f9fafb';
         const sc = statusColors[r.status] || '#9ca3af';
         return `<tr>${[
-          td(bg, `font-weight:${r.isFirst ? '600' : '400'};color:#111827;`,        r.clientName),
-          td(bg, 'color:#374151;',                                                  TAX_TYPES[r.taxType] || r.taxType),
-          td(bg, 'color:#374151;',                                                  r.periodLabel),
-          td(bg, `color:${sc};font-weight:600;`,                                    statusLabels[r.status] || r.status),
+          td(bg, `font-weight:${r.isFirst ? '600' : '400'};color:#111827;`,        escapeHtml(r.clientName)),
+          td(bg, 'color:#374151;',                                                  TAX_TYPES[r.taxType] || escapeHtml(r.taxType)),
+          td(bg, 'color:#374151;',                                                  escapeHtml(r.periodLabel)),
+          td(bg, `color:${sc};font-weight:600;`,                                    statusLabels[r.status] || escapeHtml(r.status)),
           td(bg, `text-align:center;color:${cellClr(r.returnSubmitted, true)};`,    boolVal(r.returnSubmitted)),
           td(bg, `text-align:center;color:${cellClr(r.screenshotTaken, true)};`,    boolVal(r.screenshotTaken)),
           td(bg, `text-align:center;color:${cellClr(r.paymentConfirmed, true)};`,   boolVal(r.paymentConfirmed)),
           td(bg, `text-align:center;color:${cellClr(r.returnDownloaded, true)};`,   boolVal(r.returnDownloaded)),
           td(bg, `text-align:center;color:${cellClr(r.payslipStatus, 'sent')};`,    sentVal(r.payslipStatus)),
-          td(bg, 'color:#6b7280;',                                                   r.notes || ''),
+          td(bg, 'color:#6b7280;',                                                   escapeHtml(r.notes || '')),
         ].join('')}</tr>`;
       }).join('') || `<tr><td colspan="10" style="padding:16px;text-align:center;color:#9ca3af;font-size:11px;border:1px solid #e5e7eb;">No data</td></tr>`;
       tableHTML = `<table><thead><tr>${hRow}</tr></thead><tbody>${bRows}</tbody></table>`;

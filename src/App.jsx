@@ -16,20 +16,87 @@ import AIAssistant    from './pages/AIAssistant.jsx';
 import Filings        from './pages/Filings.jsx';
 import MonthlyWork    from './pages/MonthlyWork.jsx';
 import TaxTool        from './pages/TaxTool.jsx';
+import Documents      from './pages/Documents.jsx';
 import Login          from './components/Login.jsx';
+import ErrorBoundary  from './components/ErrorBoundary.jsx';
+import PdfViewer      from './components/PdfViewer.jsx';
 
 // ─── Work Guide Page ──────────────────────────────────────────────────────────
+
+const WORK_GUIDE_TABS = [
+  { key: 'guide', label: 'Accounting Guide', type: 'html', src: '/guide.html' },
+  { key: 'rsm',    label: 'RSM Tax Guide 25/26', type: 'pdf', src: encodeURI('/RSMTZ_Tanzania Tax Guide 2025-26 (1).pdf') },
+  { key: 'glance', label: 'Taxes at a Glance',   type: 'pdf', src: encodeURI('/TAXES_AND_DUTIES_AT_A_GLANCE_2025_2026 (2).pdf') },
+  { key: 'card',   label: 'Tax Datacard',        type: 'pdf', src: encodeURI('/tanzania-tax-datacard-2025-2026.pdf') },
+];
+
 function WorkGuidePage() {
+  const [tab, setTab] = useState('guide');
+  // PDFs render via the browser's native viewer by default (simple, with built-in
+  // text selection). Some embedded/GPU-disabled browsers paint PDFs black — the
+  // "built-in viewer" fallback swaps in our pdf.js canvas renderer, which always works.
+  const [builtInPdf, setBuiltInPdf] = useState(false);
+  const active = WORK_GUIDE_TABS.find(t => t.key === tab) || WORK_GUIDE_TABS[0];
+  const isPdf = active.type === 'pdf';
+
   return (
-    <iframe
-      src="/guide.html"
-      title="Work Guide"
-      style={{ width: '100%', height: 'calc(100vh - 64px)', border: 'none', display: 'block' }}
-    />
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 64px)' }}>
+      <div className="px-4 sm:px-6 pt-4 pb-2 flex-shrink-0 overflow-x-auto">
+        <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl w-fit min-w-max">
+          {WORK_GUIDE_TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={cn(
+                'py-2 px-3 sm:px-4 text-xs sm:text-sm font-semibold rounded-xl transition whitespace-nowrap',
+                tab === t.key
+                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* flex-1 + relative gives the wrapper a resolved size synchronously, avoiding a
+          layout-timing issue where content sized by flex-grow can initialize at 0x0. */}
+      <div className="flex-1 relative">
+        <div className="absolute inset-0 flex flex-col">
+          {isPdf && builtInPdf ? (
+            <PdfViewer key={active.key} src={active.src} title={active.label} />
+          ) : (
+            <>
+              {isPdf && (
+                <div className="flex items-center justify-between gap-3 px-4 py-1.5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex-shrink-0">
+                  <span className="text-xs text-gray-400 dark:text-gray-500">PDF not showing?</span>
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setBuiltInPdf(true)} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+                      Use built-in viewer
+                    </button>
+                    <a href={active.src} download className="text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                      Download
+                    </a>
+                  </div>
+                </div>
+              )}
+              <iframe
+                key={active.key}
+                src={active.src}
+                title={active.label}
+                className="w-full flex-1 border-0 block"
+                style={{ colorScheme: 'light' }}
+              />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 import {
-  exportData, importData, requestNotificationPermission, cn, getLastSyncTs, clearState
+  exportData, importData, requestNotificationPermission, cn, getLastSyncTs, clearState, listBackups, loadBackup
 } from './utils/index.js';
 import { isInstallable, promptInstall, isRunningStandalone, clearAppCache } from './lib/pwa.js';
 import { Toggle, Modal, BatteryWidget, LiveClock, ToastContainer } from './components/UI.jsx';
@@ -139,11 +206,17 @@ const Icons = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
     </svg>
   ),
+  Documents: () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z M13 3v5a1 1 0 001 1h5" />
+    </svg>
+  ),
 };
 // ─── Sync Status Badge ───────────────────────────────────────────────────────────────
 
 function SyncBadge() {
   const status = useSyncStatus();
+  const { manualSync } = useApp();
   const [, tick] = useState(0);
 
   // Re-render every 30 s so the relative time stays fresh
@@ -173,10 +246,8 @@ function SyncBadge() {
     }
   }
 
-  const { manualSync } = useApp();
-
   return (
-    <button 
+    <button
       onClick={manualSync}
       disabled={status === 'syncing'}
       className={cn('flex items-center gap-1.5 text-xs font-medium cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-800 px-2 py-1 rounded transition-colors', cls, status === 'syncing' && 'opacity-75 cursor-wait')} 
@@ -739,6 +810,64 @@ function TaxRatesSection() {
   );
 }
 
+// ─── Local Backups (restore) ──────────────────────────────────────────────────
+
+function LocalBackupsSection({ onClose }) {
+  const { dispatch, showToast } = useApp();
+  const [backups, setBackups] = useState(() => listBackups());
+  const [confirmKey, setConfirmKey] = useState(null);
+
+  if (backups.length === 0) {
+    return (
+      <div>
+        <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1.5">Local Backups</p>
+        <p className="text-xs text-gray-400 dark:text-gray-600">Automatic daily snapshots will appear here once you've used the app for a day.</p>
+      </div>
+    );
+  }
+
+  function fmtSize(n) {
+    return n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`;
+  }
+
+  function restore(key) {
+    const data = loadBackup(key);
+    if (!data) { showToast('Could not read that backup'); return; }
+    dispatch({ type: 'IMPORT_DATA', payload: data });
+    setConfirmKey(null);
+    onClose?.();
+    showToast('Backup restored');
+  }
+
+  return (
+    <div>
+      <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Local Backups</p>
+      <p className="text-xs text-gray-400 dark:text-gray-600 mb-3">Automatic daily snapshots on this device · last {backups.length}. Restoring replaces your current data.</p>
+      <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+        {backups.map(b => (
+          <div key={b.key} className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-gray-700 dark:text-gray-200">{b.date}</p>
+              <p className="text-[10px] text-gray-400 dark:text-gray-600">{fmtSize(b.size)}</p>
+            </div>
+            {confirmKey === b.key ? (
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">Replace all?</span>
+                <button onClick={() => restore(b.key)} className="text-[11px] font-semibold px-2 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition">Yes, restore</button>
+                <button onClick={() => setConfirmKey(null)} className="text-[11px] font-medium px-2 py-1 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 transition">No</button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmKey(b.key)} className="flex-shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-blue-400 hover:text-blue-600 dark:hover:text-blue-400 transition">
+                Restore
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Settings Modal ───────────────────────────────────────────────────────────
 
 function SettingsModal({ isOpen, onClose, onLogout, userEmail }) {
@@ -849,6 +978,10 @@ function SettingsModal({ isOpen, onClose, onLogout, userEmail }) {
             </label>
           </div>
         </div>
+
+        <hr className="border-gray-200 dark:border-gray-800" />
+
+        <LocalBackupsSection onClose={onClose} />
 
         <hr className="border-gray-200 dark:border-gray-800" />
 
@@ -1137,6 +1270,7 @@ function Sidebar({ currentView, onNavigate, onSettings, mobileOpen, onMobileClos
   const navItems = [
     { key: 'dashboard',     label: 'Dashboard',      Icon: Icons.Dashboard     },
     { key: 'clients',       label: 'Clients',         Icon: Icons.Clients       },
+    { key: 'documents',     label: 'Documents',       Icon: Icons.Documents     },
     { key: 'filings',       label: 'Filings',         Icon: Icons.Filings       },
     { key: 'monthlywork',   label: 'Monthly Work',    Icon: Icons.MonthlyWork   },
     { key: 'taxtool',       label: 'Tax Tool',        Icon: Icons.TaxTool       },
@@ -1155,6 +1289,10 @@ function Sidebar({ currentView, onNavigate, onSettings, mobileOpen, onMobileClos
   const today = new Date().toISOString().slice(0, 10);
   const overdueTasks = state.tasks.filter(t => t.dueDate && t.dueDate.slice(0, 10) < today && t.status !== 'completed').length;
   const pendingTasks = state.tasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length;
+  // Documents needing attention: have a follow-up date in the past (or today) and aren't filed away
+  const docsAttention = (state.documents || []).filter(d =>
+    d.dueBackDate && d.location !== 'filed' && d.dueBackDate.slice(0, 10) <= today
+  ).length;
   const badges = { tasks: pendingTasks > 0 ? pendingTasks : null };
 
   const sidebarContent = (
@@ -1192,6 +1330,11 @@ function Sidebar({ currentView, onNavigate, onSettings, mobileOpen, onMobileClos
             {key === 'tasks' && overdueTasks > 0 && (
               <span className="ml-auto text-xs bg-red-600 text-white px-1.5 py-0.5 rounded-full animate-pulse">
                 {overdueTasks}
+              </span>
+            )}
+            {key === 'documents' && docsAttention > 0 && (
+              <span className="ml-auto text-xs bg-red-600 text-white px-1.5 py-0.5 rounded-full animate-pulse">
+                {docsAttention}
               </span>
             )}
           </button>
@@ -1305,6 +1448,7 @@ function AppShell({ onLogout, userEmail }) {
     monthlywork:   'Monthly Work',
     taxtool:       'Tax Tool',
       workguide:     'Work Guide',
+    documents:     'Documents',
   };
 
   // Render current page
@@ -1326,6 +1470,7 @@ function AppShell({ onLogout, userEmail }) {
       case 'monthlywork':    return <MonthlyWork />;
       case 'taxtool':        return <TaxTool />;
       case 'workguide':      return <WorkGuidePage />;
+      case 'documents':      return <Documents />;
       default:               return <Dashboard onNavigate={navigate} />;
     }
   }
@@ -1409,7 +1554,9 @@ function AppShell({ onLogout, userEmail }) {
         {/* Page content */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-950">
           <div className="max-w-7xl mx-auto px-3 sm:px-6 py-6 min-w-0">
-            {renderPage()}
+            <ErrorBoundary resetKey={currentView}>
+              {renderPage()}
+            </ErrorBoundary>
           </div>
         </main>
       </div>

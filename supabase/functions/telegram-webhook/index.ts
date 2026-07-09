@@ -7,6 +7,10 @@ const CHAT_ID      = Deno.env.get('TELEGRAM_CHAT_ID')!;
 const USER_ID      = Deno.env.get('APP_USER_ID')!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SRV = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+// Shared secret registered with Telegram via setWebhook(secret_token=...).
+// Telegram echoes it back in the X-Telegram-Bot-Api-Secret-Token header on
+// every webhook call, so requests lacking it did not come from Telegram.
+const WEBHOOK_SECRET = Deno.env.get('TELEGRAM_WEBHOOK_SECRET') || '';
 
 interface TaxReturn  { id: string; clientId: string; taxType: string; period: string; status: string; completedAt?: string; notes?: string; }
 interface Client     { id: string; name: string; taxTypes: string[]; hidden?: boolean; notes?: string; }
@@ -214,9 +218,22 @@ const uid = () => crypto.randomUUID();
 // ─── Main handler ─────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('OK', { status: 200 });
+
+  // Reject forged requests: only Telegram knows the secret token we registered.
+  // (Enforced once TELEGRAM_WEBHOOK_SECRET is set — see README step 4.)
+  if (WEBHOOK_SECRET && req.headers.get('x-telegram-bot-api-secret-token') !== WEBHOOK_SECRET) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return new Response('OK', { status: 200 }); }
-  const rawText: string = ((body?.message as Record<string,unknown>)?.text as string || '').trim();
+  const message = body?.message as Record<string, unknown> | undefined;
+
+  // Only obey the owner's chat — ignore messages from any other Telegram user.
+  const senderChatId = (message?.chat as Record<string, unknown>)?.id;
+  if (String(senderChatId) !== String(CHAT_ID)) return new Response('OK', { status: 200 });
+
+  const rawText: string = (message?.text as string || '').trim();
   if (!rawText) return new Response('OK', { status: 200 });
 
   try {
