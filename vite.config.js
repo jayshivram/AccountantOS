@@ -34,6 +34,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,mjs,css,html,svg,png,woff2}'],
+        // Don't let the SPA navigation fallback (index.html) hijack file requests
+        // like the reference PDFs opened in an iframe — serve those from the network.
+        navigateFallbackDenylist: [/\.pdf$/i],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,

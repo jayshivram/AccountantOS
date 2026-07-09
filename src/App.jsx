@@ -25,9 +25,9 @@ import PdfViewer      from './components/PdfViewer.jsx';
 
 const WORK_GUIDE_TABS = [
   { key: 'guide', label: 'Accounting Guide', type: 'html', src: '/guide.html' },
-  { key: 'rsm',    label: 'RSM Tax Guide 25/26', type: 'pdf', src: encodeURI('/RSMTZ_Tanzania Tax Guide 2025-26 (1).pdf') },
-  { key: 'glance', label: 'Taxes at a Glance',   type: 'pdf', src: encodeURI('/TAXES_AND_DUTIES_AT_A_GLANCE_2025_2026 (2).pdf') },
-  { key: 'card',   label: 'Tax Datacard',        type: 'pdf', src: encodeURI('/tanzania-tax-datacard-2025-2026.pdf') },
+  { key: 'rsm',    label: 'RSM Tax Guide 25/26', type: 'pdf', src: '/rsm-tanzania-tax-guide-2025-26.pdf' },
+  { key: 'glance', label: 'Taxes at a Glance',   type: 'pdf', src: '/taxes-and-duties-at-a-glance-2025-2026.pdf' },
+  { key: 'card',   label: 'Tax Datacard',        type: 'pdf', src: '/tanzania-tax-datacard-2025-2026.pdf' },
 ];
 
 function WorkGuidePage() {
