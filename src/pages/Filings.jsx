@@ -5,7 +5,7 @@ import { TaxTypeBadge } from '../components/UI.jsx';
 
 // ─── Checklist definitions per tax type ──────────────────────────────────────
 
-function getChecklistForType(type, quarter) {
+export function getChecklistForType(type, quarter) {
   switch (type) {
     case 'VAT':
       return [
@@ -67,7 +67,7 @@ function getChecklistForType(type, quarter) {
   }
 }
 
-function isItemAddressed(item, val) {
+export function isItemAddressed(item, val) {
   const doneVal = item.doneVal ?? true;
   return val === doneVal || val === 'nil';
 }

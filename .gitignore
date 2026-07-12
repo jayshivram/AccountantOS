@@ -10,3 +10,8 @@ npm-debug.log*
 *.json.bak
 accountant-os-backup*.json
 
+# Local working spreadsheets / source data (not for the repo)
+*.xlsx
+*.xls
+*.csv
+

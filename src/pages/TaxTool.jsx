@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useApp } from '../context/AppContext.jsx';
 import { cn, format, escapeHtml } from '../utils/index.js';
+import { WHT_SCHEDULE, WHT_CATEGORIES } from '../data/whtRates.js';
 import {
   fmt, fmtN, fmtDec, fmtNDec,
   readNum, readNumDec, readSignedDec,
@@ -162,63 +163,470 @@ function exportToPdf(htmlContent, title) {
 // ─── VAT Section ──────────────────────────────────────────────────────────────
 
 function VATSection({ taxRates }) {
+  const [vatTab, setVatTab] = useState('summary'); // 'summary' | 'converter'
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+        {[['summary', 'VAT Summary'], ['converter', 'Converter']].map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setVatTab(key)}
+            className={cn(
+              'flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg transition whitespace-nowrap px-3',
+              vatTab === key ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {vatTab === 'summary'   && <VATSummarySection taxRates={taxRates} />}
+      {vatTab === 'converter' && <VATConverter      taxRates={taxRates} />}
+    </div>
+  );
+}
+
+// ─── VAT Converter (inclusive ↔ exclusive quick calculators) ──────────────────
+
+const VAT_CONVERTERS = [
+  {
+    key: 'inclToExcl', title: 'Inclusive → Exclusive', hint: 'Strip VAT out of a gross total',
+    inputLabel: 'Total incl. VAT (TZS)', initial: '118,000',
+    accent: 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30',
+    icon: 'M20 12H4',
+    calc: (n, rate) => { const r = calcVatInclusiveToExclusive(n, rate); return [
+      { label: 'Pre-VAT (Exclusive)', value: fmt(r.exclusive), color: 'bold' },
+      { label: 'VAT Amount', value: fmt(r.vatAmount), color: 'red' },
+    ]; },
+  },
+  {
+    key: 'amtToTotals', title: 'VAT Amount → Totals', hint: 'Rebuild totals from the VAT figure',
+    inputLabel: 'VAT Amount (TZS)', initial: '18,000',
+    accent: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30',
+    icon: 'M12 4v16m8-8H4',
+    calc: (n, rate) => { const r = calcVatAmountToTotals(n, rate); return [
+      { label: 'Pre-VAT (Exclusive)', value: fmt(r.exclusive), color: 'bold' },
+      { label: 'Inclusive Total', value: fmt(r.inclusive), color: 'green' },
+    ]; },
+  },
+  {
+    key: 'exclToIncl', title: 'Exclusive → Inclusive', hint: 'Add VAT on top of a net amount',
+    inputLabel: 'Net amount excl. VAT (TZS)', initial: '100,000',
+    accent: 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30',
+    icon: 'M12 6v12m6-6H6',
+    calc: (n, rate) => { const r = calcVatExclusiveToInclusive(n, rate); return [
+      { label: `VAT (${(rate * 100).toFixed(0)}%)`, value: fmt(r.vatAmount), color: 'red' },
+      { label: 'Inclusive Total', value: fmt(r.inclusive), color: 'green' },
+    ]; },
+  },
+];
+
+function VATConverterCard({ config, rate }) {
+  const [raw, onChange, num] = useMoneyInput(config.initial);
+  const [rows, setRows] = useState(null);
+  const [flash, setFlash] = useState(false);
+
+  function run() {
+    setRows(config.calc(num, rate));
+    setFlash(true);
+    setTimeout(() => setFlash(false), 700);
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm space-y-3.5">
+      <div className="flex items-center gap-2.5">
+        <span className={cn('w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0', config.accent)}>
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={config.icon} /></svg>
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 leading-tight">{config.title}</h3>
+          <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-tight mt-0.5">{config.hint}</p>
+        </div>
+      </div>
+      <MoneyInput label={config.inputLabel} value={raw} onChange={onChange} />
+      <CalcButton onClick={run}>Calculate</CalcButton>
+      {rows && (
+        <div className="space-y-0.5 rounded-xl bg-gray-50 dark:bg-gray-800/50 px-3 py-2 border border-gray-100 dark:border-gray-800">
+          {rows.map(r => <ResultRow key={r.label} label={r.label} value={r.value} color={r.color} flash={flash} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VATConverter({ taxRates }) {
   const rate = taxRates.VAT;
-  const [incl, onIncl, inclN, setIncl]   = useMoneyInput('118,000');
-  const [vatA, onVatA, vatAN, setVatA]   = useMoneyInput('18,000');
-  const [excl, onExcl, exclN, setExcl]   = useMoneyInput('100,000');
-  const [res1, setRes1] = useState(null);
-  const [res2, setRes2] = useState(null);
-  const [res3, setRes3] = useState(null);
-  const [flash1, setFlash1] = useState(false);
-  const [flash2, setFlash2] = useState(false);
-  const [flash3, setFlash3] = useState(false);
-
-  function flash(setter) { setter(true); setTimeout(() => setter(false), 700); }
-
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50">
         <svg className="w-4 h-4 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
         <p className="text-xs text-blue-700 dark:text-blue-300">VAT rate is <strong>{(rate * 100).toFixed(0)}%</strong> — configurable in Settings → Tax Rates</p>
       </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* 1a: Inclusive → Exclusive */}
-        <CalcCard title="Inclusive → Exclusive">
-          <MoneyInput label="Total incl. VAT (TZS)" value={incl} onChange={onIncl} />
-          <CalcButton onClick={() => { const r = calcVatInclusiveToExclusive(inclN, rate); setRes1(r); flash(setFlash1); }}>Calculate</CalcButton>
-          {res1 && (
-            <div className="space-y-0.5">
-              <ResultRow label="Pre-VAT (Exclusive)" value={fmt(res1.exclusive)} flash={flash1} />
-              <ResultRow label="VAT Amount" value={fmt(res1.vatAmount)} color="red" flash={flash1} />
-            </div>
-          )}
-        </CalcCard>
-
-        {/* 1b: VAT Amount → Totals */}
-        <CalcCard title="VAT Amount → Totals">
-          <MoneyInput label="VAT Amount (TZS)" value={vatA} onChange={onVatA} />
-          <CalcButton onClick={() => { const r = calcVatAmountToTotals(vatAN, rate); setRes2(r); flash(setFlash2); }}>Calculate</CalcButton>
-          {res2 && (
-            <div className="space-y-0.5">
-              <ResultRow label="Pre-VAT (Exclusive)" value={fmt(res2.exclusive)} flash={flash2} />
-              <ResultRow label="Inclusive Total" value={fmt(res2.inclusive)} color="green" flash={flash2} />
-            </div>
-          )}
-        </CalcCard>
-
-        {/* 1c: Exclusive → Inclusive */}
-        <CalcCard title="Exclusive → Inclusive">
-          <MoneyInput label="Net amount excl. VAT (TZS)" value={excl} onChange={onExcl} />
-          <CalcButton onClick={() => { const r = calcVatExclusiveToInclusive(exclN, rate); setRes3(r); flash(setFlash3); }}>Calculate</CalcButton>
-          {res3 && (
-            <div className="space-y-0.5">
-              <ResultRow label={`VAT (${(rate * 100).toFixed(0)}%)`} value={fmt(res3.vatAmount)} color="red" flash={flash3} />
-              <ResultRow label="Inclusive Total" value={fmt(res3.inclusive)} color="green" flash={flash3} />
-            </div>
-          )}
-        </CalcCard>
+        {VAT_CONVERTERS.map(c => <VATConverterCard key={c.key} config={c} rate={rate} />)}
       </div>
+    </div>
+  );
+}
+
+// ─── VAT Summary (monthly VAT computation template) ───────────────────────────
+
+const VAT_MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function loadVatSummary(period) {
+  try { const s = localStorage.getItem(`vatSummary_${period}`); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+function saveVatSummary(period, data) {
+  try { localStorage.setItem(`vatSummary_${period}`, JSON.stringify(data)); } catch {}
+}
+
+function VATSummarySection({ taxRates }) {
+  const rate = taxRates.VAT;
+  const now = new Date();
+  const [period, setPeriod] = useState(format(now, 'yyyy-MM'));
+  const [company, setCompany] = useState('');
+  // standard-rated lines — enter ANY of INC / EXCL / VAT; the other two derive.
+  // Each line is { v: rawString, b: 'inc' | 'excl' | 'vat' } (b = which column was entered).
+  const [sales, setSales]       = useState({ v: '', b: 'inc' });
+  const [purchases, setPurch]   = useState({ v: '', b: 'inc' });
+  const [imports, setImports]   = useState({ v: '', b: 'inc' });
+  const [indirect, setIndirect] = useState({ v: '', b: 'inc' });
+  // exempt / non-creditable lines — no VAT, exclusive amount only
+  const [nonCredSales, setNonCredSales] = useState('');
+  const [exemptSales, setExemptSales] = useState('');
+  const [nonCred, setNonCred]         = useState('');
+  const [exemptPurch, setExemptPurch] = useState('');
+  // direct VAT-amount lines
+  const [vatWithheld, setVatWithheld] = useState('');
+  const [balanceCf, setBalanceCf]     = useState(''); // signed: negative = credit b/f
+  const [res, setRes] = useState(null);
+  const [flash, setFlash] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const voucherRef = useRef(null);
+
+  const fields = { company, sales, purchases, imports, indirect, nonCredSales, exemptSales, nonCred, exemptPurch, vatWithheld, balanceCf };
+
+  // Normalise a stored line to { v, b } — tolerates the old string-only format.
+  function normLine(x) {
+    if (x == null) return { v: '', b: 'inc' };
+    if (typeof x === 'string') return { v: x, b: 'inc' };
+    return { v: x.v || '', b: x.b || 'inc' };
+  }
+
+  function applyData(d) {
+    setCompany(d?.company || '');
+    setSales(normLine(d?.sales)); setPurch(normLine(d?.purchases)); setImports(normLine(d?.imports)); setIndirect(normLine(d?.indirect));
+    setNonCredSales(d?.nonCredSales || ''); setExemptSales(d?.exemptSales || ''); setNonCred(d?.nonCred || ''); setExemptPurch(d?.exemptPurch || '');
+    setVatWithheld(d?.vatWithheld || ''); setBalanceCf(d?.balanceCf || '');
+    setRes(null);
+  }
+
+  useEffect(() => { applyData(loadVatSummary(period)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function switchPeriod(newPeriod) {
+    saveVatSummary(period, fields);
+    setPeriod(newPeriod);
+    applyData(loadVatSummary(newPeriod));
+  }
+
+  // ── Live computation ──
+  // Derive INC / EXCL / VAT from whichever column the user typed into.
+  function computeLine(line) {
+    const n = readSignedDec(line.v);
+    if (line.b === 'excl') { const excl = n; const vat = excl * rate;           return { inc: excl + vat, excl, vat, n }; }
+    if (line.b === 'vat')  { const vat = n;  const excl = rate ? vat / rate : 0; return { inc: excl + vat, excl, vat, n }; }
+    const inc = n; const excl = inc / (1 + rate);                                return { inc, excl, vat: inc - excl, n };
+  }
+  const S  = computeLine(sales);
+  const P  = computeLine(purchases);
+  const I  = computeLine(imports);
+  const IE = computeLine(indirect);
+  const nonCredSalesN = readNumDec(nonCredSales);
+  const exemptSalesN  = readNumDec(exemptSales);
+  const nonCredN      = readNumDec(nonCred);
+  const exemptPurchN  = readNumDec(exemptPurch);
+  const vatWithheldN  = readNumDec(vatWithheld);
+  const balanceCfN    = readSignedDec(balanceCf);
+
+  const outputVat = S.vat;
+  const inputVat  = P.vat + I.vat + IE.vat;
+  const totalSalesExcl = S.excl + nonCredSalesN + exemptSalesN;
+  const net = outputVat - inputVat - vatWithheldN + balanceCfN; // >0 payable, <0 refundable
+
+  function handleCalculate() {
+    if (!S.inc && !P.inc && !IE.inc) { alert('Enter at least Sales or Purchases figures.'); return; }
+    setRes({
+      period, company, rate,
+      sales: S, purchases: P, imports: I, indirect: IE,
+      nonCredSalesN, exemptSalesN, nonCredN, exemptPurchN, vatWithheldN, balanceCfN,
+      outputVat, inputVat, totalSalesExcl, net,
+    });
+    setFlash(true);
+    setTimeout(() => setFlash(false), 700);
+    saveVatSummary(period, fields);
+    setTimeout(() => voucherRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
+  }
+
+  function handleReset() {
+    if (!confirm('Clear this period\'s VAT summary?')) return;
+    localStorage.removeItem(`vatSummary_${period}`);
+    applyData(null);
+  }
+
+  const periodLabel = (() => {
+    const [y, m] = period.split('-').map(Number);
+    return `${VAT_MONTHS[(m || 1) - 1]} ${y}`.toUpperCase();
+  })();
+
+  async function handleExport(type) {
+    if (!res) return;
+    setExporting(true);
+    try {
+      const rLabel = (() => { const [y, m] = res.period.split('-').map(Number); return `${VAT_MONTHS[(m || 1) - 1]} ${y}`.toUpperCase(); })();
+      const fname = `VAT_Summary_${res.period}`;
+      if (type === 'png') { await exportToPng(voucherRef, fname); return; }
+      const netAbs = fmtNDec(Math.abs(res.net));
+      const netLabel = res.net < 0 ? `(${netAbs})` : netAbs;
+      const netTag = res.net < 0 ? 'Tax Receivable' : 'Tax Payable';
+      const line = (name, inc, excl, vat, cls = '') =>
+        `<tr class="${cls}"><td>${name}</td><td class="num">${inc}</td><td class="num">${excl}</td><td class="num">${vat}</td></tr>`;
+      const dash = '-';
+      const html = `
+        ${res.company ? `<p style="text-align:center;font-weight:700;font-size:13px;margin:0 0 2px;">${escapeHtml(res.company)}</p>` : ''}
+        <h2 style="text-align:center;">VAT SUMMARY ${escapeHtml(rLabel)}</h2>
+        <table>
+          <thead><tr><th>SUMMARY</th><th class="num">INC</th><th class="num">EXCL</th><th class="num">VAT</th></tr></thead>
+          <tbody>
+            ${line('SALES', fmtNDec(res.sales.inc), fmtNDec(res.sales.excl), fmtNDec(res.sales.vat))}
+            ${line('NON CREDITABLE SALES', '', res.nonCredSalesN ? fmtNDec(res.nonCredSalesN) : dash, '')}
+            ${line('EXEMPT SALES', '', res.exemptSalesN ? fmtNDec(res.exemptSalesN) : dash, '')}
+            ${line('TOTAL SALES', '', fmtNDec(res.totalSalesExcl), '', 'subtotal')}
+            ${line('PURCHASES', fmtNDec(res.purchases.inc), fmtNDec(res.purchases.excl), fmtNDec(res.purchases.vat))}
+            ${line('PURCHASES (IMPORT)', res.imports.inc ? fmtNDec(res.imports.inc) : dash, res.imports.inc ? fmtNDec(res.imports.excl) : dash, res.imports.inc ? fmtNDec(res.imports.vat) : dash)}
+            ${line('INDIRECT EXPENSES', fmtNDec(res.indirect.inc), fmtNDec(res.indirect.excl), fmtNDec(res.indirect.vat))}
+            ${line('NON CRED', '', res.nonCredN ? fmtNDec(res.nonCredN) : dash, '')}
+            ${line('EXEMPT', '', res.exemptPurchN ? fmtNDec(res.exemptPurchN) : dash, '')}
+            ${line('VAT WITHHELD', '', '', res.vatWithheldN ? fmtNDec(res.vatWithheldN) : dash)}
+            ${line('BALANCE C/F', '', '', fmtNDec(res.balanceCfN))}
+            <tr class="net"><td>PAYABLE/REFUNDABLE</td><td class="num"></td><td class="num"></td><td class="num">${netLabel}</td></tr>
+          </tbody>
+        </table>
+        <p style="text-align:right;font-style:italic;font-size:11px;margin:6px 2px 0;color:#6b7280;">${netTag}</p>
+      `;
+      const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(fname)}</title><style>@page{size:A4 portrait;margin:14mm;}body{font-family:Arial,sans-serif;margin:0;color:#111827;font-size:11px;}h2{margin:0 0 10px;font-size:14px;}table{border-collapse:collapse;width:100%;}th,td{padding:5px 8px;border:1px solid #d1d5db;font-size:11px;}th{background:#f3f4f6;font-weight:700;text-align:left;}th.num,td.num{text-align:right;font-family:monospace;}tr.subtotal td{background:#f9fafb;font-weight:600;}tr.net td{background:#fef08a;font-weight:700;font-size:12px;}</style></head><body>${html}</body></html>`;
+      const w = window.open('', '_blank', 'width=720,height=800');
+      if (!w) return;
+      w.document.write(fullHtml);
+      w.document.close();
+      w.onload = () => { w.focus(); w.print(); };
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const inputCls = 'w-full px-2.5 py-1.5 text-right rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500 transition';
+
+  // Standard-rated line: all three columns editable. Type in any one (INC/EXCL/VAT)
+  // and the other two derive. The entered column is highlighted; derived ones are muted.
+  function StandardLine({ label, line, onChange }) {
+    const c = computeLine(line);
+    const hasVal = line.v !== '' && c.n !== 0;
+    const cellBase = 'w-full px-2.5 py-1.5 text-right rounded-lg border text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-blue-500 transition';
+    function cell(col) {
+      const isSource = line.b === col;
+      const display = isSource ? line.v : (hasVal ? fmtNDec(col === 'inc' ? c.inc : col === 'excl' ? c.excl : c.vat) : '');
+      return (
+        <input
+          type="text" inputMode="decimal" value={display}
+          onChange={e => onChange({ v: formatMoney(e.target.value), b: col })}
+          onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+          placeholder="0"
+          className={cn(cellBase, isSource
+            ? 'border-blue-300 dark:border-blue-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white font-medium'
+            : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40 text-gray-500 dark:text-gray-400')}
+        />
+      );
+    }
+    return (
+      <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-800">
+        <div className="sm:hidden text-sm text-gray-700 dark:text-gray-300 mb-1.5">{label}</div>
+        <div className="grid grid-cols-3 sm:grid-cols-[1fr_11rem_9rem_9rem] gap-2 sm:gap-3 items-center">
+          <span className="hidden sm:block text-sm text-gray-700 dark:text-gray-300">{label}</span>
+          {[['inc', 'INC'], ['excl', 'EXCL'], ['vat', 'VAT']].map(([col, cap]) => (
+            <div key={col}>
+              <div className="sm:hidden text-[10px] text-gray-400 mb-0.5 text-right pr-1">{cap}</div>
+              {cell(col)}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // A row in the editable form. `driver` = which column is editable ('inc' | 'excl' | 'vat').
+  function FormRow({ label, value, onChange, split, driver = 'inc', signed = false, bold = false }) {
+    return (
+      <div className={cn('grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_11rem_9rem_9rem] items-center gap-x-3 gap-y-1 px-4 py-2 border-b border-gray-100 dark:border-gray-800', bold && 'bg-gray-50 dark:bg-gray-800/40')}>
+        <span className={cn('text-sm', bold ? 'font-semibold text-gray-800 dark:text-gray-200' : 'text-gray-700 dark:text-gray-300')}>{label}</span>
+        {/* INC */}
+        <div className="justify-self-end sm:justify-self-stretch">
+          {driver === 'inc' ? (
+            <input type="text" inputMode="decimal" value={value}
+              onChange={e => onChange(signed ? formatMoney(e.target.value) : formatMoney(e.target.value))}
+              onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} placeholder="0" className={inputCls} />
+          ) : <span className="hidden sm:block text-right text-xs text-gray-300 dark:text-gray-600 pr-2">—</span>}
+        </div>
+        {/* EXCL */}
+        <div className="hidden sm:block justify-self-stretch">
+          {driver === 'excl' ? (
+            <input type="text" inputMode="decimal" value={value}
+              onChange={e => onChange(formatMoney(e.target.value))}
+              onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} placeholder="0" className={inputCls} />
+          ) : driver === 'inc' ? (
+            <span className="block text-right text-sm tabular-nums text-gray-500 dark:text-gray-400 pr-2">{split && split.inc ? fmtNDec(split.excl) : '—'}</span>
+          ) : <span className="block text-right text-xs text-gray-300 dark:text-gray-600 pr-2">—</span>}
+        </div>
+        {/* VAT */}
+        <div className="hidden sm:block justify-self-stretch">
+          {driver === 'vat' ? (
+            <input type="text" inputMode="decimal" value={value}
+              onChange={e => onChange(formatMoney(e.target.value))}
+              onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} placeholder="0" className={inputCls} />
+          ) : driver === 'inc' ? (
+            <span className="block text-right text-sm tabular-nums font-medium text-blue-600 dark:text-blue-400 pr-2">{split && split.inc ? fmtNDec(split.vat) : '—'}</span>
+          ) : <span className="block text-right text-xs text-gray-300 dark:text-gray-600 pr-2">—</span>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Period + company */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-400 whitespace-nowrap">Period</label>
+          <input type="month" value={period} onChange={e => e.target.value && switchPeriod(e.target.value)}
+            className="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+        </div>
+        <input value={company} onChange={e => setCompany(e.target.value)} placeholder="Client / company name (optional)"
+          className="flex-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+        <div className="flex items-center gap-2 sm:ml-auto">
+          <RateBadge rate={rate} />
+        </div>
+      </div>
+
+      {/* Editable summary table */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden">
+        <div className="hidden sm:grid grid-cols-[1fr_11rem_9rem_9rem] gap-x-3 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700 px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+          <span>Summary</span>
+          <span className="text-right pr-2">Inc</span>
+          <span className="text-right pr-2">Excl</span>
+          <span className="text-right pr-2">VAT</span>
+        </div>
+
+        <div className="px-4 py-1.5 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800">
+          <p className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Output — Sales</p>
+        </div>
+        <StandardLine label="Sales" line={sales} onChange={setSales} />
+        <FormRow label="Non Creditable Sales" value={nonCredSales} onChange={setNonCredSales} driver="excl" />
+        <FormRow label="Exempt Sales" value={exemptSales} onChange={setExemptSales} driver="excl" />
+        {/* Total Sales — read-only computed (EXCL column only) */}
+        <div className="grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_11rem_9rem_9rem] items-center gap-x-3 px-4 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40">
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">Total Sales (excl.)</span>
+          <span className="hidden sm:block" />
+          <span className="justify-self-end sm:justify-self-stretch text-right text-sm font-semibold tabular-nums text-gray-900 dark:text-white pr-2">{fmtNDec(totalSalesExcl)}</span>
+          <span className="hidden sm:block text-right text-xs text-gray-300 dark:text-gray-600 pr-2">—</span>
+        </div>
+
+        <div className="px-4 py-1.5 bg-gray-50 dark:bg-gray-800/40 border-y border-gray-100 dark:border-gray-800">
+          <p className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Input — Purchases &amp; Expenses</p>
+        </div>
+        <StandardLine label="Purchases" line={purchases} onChange={setPurch} />
+        <StandardLine label="Purchases (Import)" line={imports} onChange={setImports} />
+        <StandardLine label="Indirect Expenses" line={indirect} onChange={setIndirect} />
+        <FormRow label="Non Cred" value={nonCred} onChange={setNonCred} driver="excl" />
+        <FormRow label="Exempt" value={exemptPurch} onChange={setExemptPurch} driver="excl" />
+
+        <div className="px-4 py-1.5 bg-gray-50 dark:bg-gray-800/40 border-y border-gray-100 dark:border-gray-800">
+          <p className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Adjustments</p>
+        </div>
+        <FormRow label="VAT Withheld" value={vatWithheld} onChange={setVatWithheld} driver="vat" />
+        <FormRow label="Balance C/F (− = credit)" value={balanceCf} onChange={setBalanceCf} driver="vat" signed />
+
+        {/* Net position */}
+        <div className={cn('flex items-center justify-between gap-3 px-4 py-3 transition-colors duration-300', flash ? 'bg-yellow-200/70 dark:bg-yellow-900/30' : 'bg-yellow-100 dark:bg-yellow-900/20')}>
+          <span className="text-sm font-bold text-gray-900 dark:text-white">Payable / Refundable</span>
+          <div className="flex items-center gap-2">
+            <span className={cn('text-base font-bold tabular-nums', net < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white')}>
+              {net < 0 ? `(${fmtNDec(Math.abs(net))})` : fmtNDec(net)}
+            </span>
+            <span className="text-[11px] italic text-gray-500 dark:text-gray-400 whitespace-nowrap">{net < 0 ? 'Tax Receivable' : 'Tax Payable'}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex gap-2 flex-wrap">
+        <CalcButton onClick={handleCalculate}>Calculate &amp; Preview</CalcButton>
+        <CalcButton onClick={handleReset} variant="secondary">Reset</CalcButton>
+        {res && (
+          <>
+            <button onClick={() => handleExport('png')} disabled={exporting} className="flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition disabled:opacity-50">PNG</button>
+            <button onClick={() => handleExport('pdf')} disabled={exporting} className="flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition disabled:opacity-50">PDF</button>
+          </>
+        )}
+      </div>
+
+      {/* Exportable preview (white, matches the shared template) */}
+      {res && (
+        <div ref={voucherRef} className="bg-white border border-gray-200 rounded-xl p-5 text-sm text-gray-900">
+          {res.company && <p className="text-center font-bold text-base mb-0.5">{res.company}</p>}
+          <p className="text-center font-bold text-base mb-3">VAT SUMMARY {periodLabel}</p>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+            <thead>
+              <tr style={{ background: '#f3f4f6' }}>
+                {['SUMMARY', 'INC', 'EXCL', 'VAT'].map((h, i) => (
+                  <th key={h} style={{ padding: '5px 8px', border: '1px solid #d1d5db', textAlign: i === 0 ? 'left' : 'right', fontWeight: 700 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { name: 'SALES', inc: fmtNDec(res.sales.inc), excl: fmtNDec(res.sales.excl), vat: fmtNDec(res.sales.vat) },
+                { name: 'NON CREDITABLE SALES', inc: '', excl: res.nonCredSalesN ? fmtNDec(res.nonCredSalesN) : '-', vat: '' },
+                { name: 'EXEMPT SALES', inc: '', excl: res.exemptSalesN ? fmtNDec(res.exemptSalesN) : '-', vat: '' },
+                { name: 'TOTAL SALES', inc: '', excl: fmtNDec(res.totalSalesExcl), vat: '', bg: '#f9fafb', bold: true },
+                { name: 'PURCHASES', inc: fmtNDec(res.purchases.inc), excl: fmtNDec(res.purchases.excl), vat: fmtNDec(res.purchases.vat) },
+                { name: 'PURCHASES (IMPORT)', inc: res.imports.inc ? fmtNDec(res.imports.inc) : '-', excl: res.imports.inc ? fmtNDec(res.imports.excl) : '-', vat: res.imports.inc ? fmtNDec(res.imports.vat) : '-' },
+                { name: 'INDIRECT EXPENSES', inc: fmtNDec(res.indirect.inc), excl: fmtNDec(res.indirect.excl), vat: fmtNDec(res.indirect.vat) },
+                { name: 'NON CRED', inc: '', excl: res.nonCredN ? fmtNDec(res.nonCredN) : '-', vat: '' },
+                { name: 'EXEMPT', inc: '', excl: res.exemptPurchN ? fmtNDec(res.exemptPurchN) : '-', vat: '' },
+                { name: 'VAT WITHHELD', inc: '', excl: '', vat: res.vatWithheldN ? fmtNDec(res.vatWithheldN) : '-' },
+                { name: 'BALANCE C/F', inc: '', excl: '', vat: fmtNDec(res.balanceCfN) },
+              ].map(row => (
+                <tr key={row.name} style={{ background: row.bg || 'transparent' }}>
+                  <td style={{ padding: '5px 8px', border: '1px solid #d1d5db', fontWeight: row.bold ? 600 : 400 }}>{row.name}</td>
+                  <td style={{ padding: '5px 8px', border: '1px solid #d1d5db', textAlign: 'right', fontFamily: 'monospace' }}>{row.inc}</td>
+                  <td style={{ padding: '5px 8px', border: '1px solid #d1d5db', textAlign: 'right', fontFamily: 'monospace', fontWeight: row.bold ? 600 : 400 }}>{row.excl}</td>
+                  <td style={{ padding: '5px 8px', border: '1px solid #d1d5db', textAlign: 'right', fontFamily: 'monospace' }}>{row.vat}</td>
+                </tr>
+              ))}
+              <tr style={{ background: '#fef08a' }}>
+                <td style={{ padding: '6px 8px', border: '1px solid #d1d5db', fontWeight: 700 }}>PAYABLE/REFUNDABLE</td>
+                <td style={{ padding: '6px 8px', border: '1px solid #d1d5db' }}></td>
+                <td style={{ padding: '6px 8px', border: '1px solid #d1d5db' }}></td>
+                <td style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>
+                  {res.net < 0 ? `(${fmtNDec(Math.abs(res.net))})` : fmtNDec(res.net)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p style={{ textAlign: 'right', fontStyle: 'italic', fontSize: '11px', marginTop: '6px', color: '#6b7280' }}>{res.net < 0 ? 'Tax Receivable' : 'Tax Payable'}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -396,88 +804,238 @@ function ProvisionalSection({ taxRates }) {
 
 // ─── WHT Section ─────────────────────────────────────────────────────────────
 
-function WHTSection({ taxRates }) {
-  const whtRates = taxRates.WHT;
-  const types = Object.keys(whtRates);
+const WHT_CAT_LABEL = Object.fromEntries(WHT_CATEGORIES.map(c => [c.key, c.label]));
+
+// Rate → chip colour, so the reference scans quickly by band.
+function whtRateChip(rate) {
+  if (rate >= 15) return 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300';
+  if (rate >= 10) return 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300';
+  if (rate >= 5)  return 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300';
+  return 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300';
+}
+
+function WHTSection() {
+  const [category, setCategory]     = useState('ind_res');
+  const [selectedCode, setSelected] = useState(() => WHT_SCHEDULE.find(e => e.category === 'ind_res')?.code);
+  const [search, setSearch]         = useState('');
   const [grossStr, onGross, grossN] = useMoneyInput('');
-  const [selectedType, setSelectedType] = useState(types[0]);
-  const [res, setRes] = useState(null);
-  const [flash, setFlash] = useState(false);
+  const [refSearch, setRefSearch]   = useState('');
+  const [showRef, setShowRef]       = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef(null);
 
-  function calculate(type, gross) {
-    const rate = whtRates[type];
-    if (!rate || !gross) return;
-    const r = calcWHT(gross, rate);
-    setRes({ ...r, rate, type });
-    setFlash(true);
-    setTimeout(() => setFlash(false), 700);
+  // Close the payment-type dropdown when clicking outside it.
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onDoc = e => { if (pickerRef.current && !pickerRef.current.contains(e.target)) setPickerOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [pickerOpen]);
+
+  const catItems = useMemo(() => WHT_SCHEDULE.filter(e => e.category === category), [category]);
+  const listItems = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? catItems.filter(e => e.name.toLowerCase().includes(q) || e.code.includes(q)) : catItems;
+  }, [catItems, search]);
+
+  const selected    = WHT_SCHEDULE.find(e => e.code === selectedCode) || catItems[0];
+  const rateFrac    = selected ? selected.rate / 100 : 0;
+  const whtAmount   = grossN * rateFrac;
+  const netPayment  = grossN - whtAmount;
+  const hasGross    = grossN > 0;
+
+  function pickCategory(key) {
+    setCategory(key);
+    setSearch('');
+    setSelected(WHT_SCHEDULE.find(e => e.category === key)?.code);
   }
 
-  function onTypeChange(e) {
-    setSelectedType(e.target.value);
-    if (grossN > 0) calculate(e.target.value, grossN);
-  }
+  const refFiltered = useMemo(() => {
+    const q = refSearch.trim().toLowerCase();
+    if (!q) return WHT_SCHEDULE;
+    return WHT_SCHEDULE.filter(e =>
+      e.name.toLowerCase().includes(q) || e.code.includes(q) || WHT_CAT_LABEL[e.category].toLowerCase().includes(q)
+    );
+  }, [refSearch]);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40">
-        <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-        <p className="text-xs text-amber-700 dark:text-amber-300"><strong>Important:</strong> WHT is calculated on gross payment amount <strong>exclusive of VAT</strong>.</p>
+      <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40">
+        <svg className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+        <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">WHT is charged on the gross payment <strong>exclusive of VAT</strong>. Rates follow the TRA GFS schedule — pick the payer category and payment type below.</p>
       </div>
 
       <CalcCard title="Withholding Tax Calculator">
-        <div className="space-y-3">
-          <MoneyInput label="Gross Payment excl. VAT (TZS)" value={grossStr} onChange={onGross} />
-          <div className="space-y-1">
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">Payment Type</label>
-            <select
-              value={selectedType}
-              onChange={onTypeChange}
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-            >
-              {types.map(t => (
-                <option key={t} value={t}>{t} — {(whtRates[t] * 100).toFixed(0)}%</option>
-              ))}
-            </select>
+        {/* Payer category */}
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Payer Category</label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            {WHT_CATEGORIES.map(c => (
+              <button
+                key={c.key}
+                onClick={() => pickCategory(c.key)}
+                className={cn(
+                  'py-2 px-2 rounded-xl text-xs font-semibold transition text-center leading-tight border',
+                  category === c.key
+                    ? 'bg-blue-600 border-blue-600 text-white shadow-sm shadow-blue-600/20'
+                    : 'bg-gray-50 dark:bg-gray-800/60 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                )}
+              >
+                {c.short}
+              </button>
+            ))}
           </div>
-          <CalcButton onClick={() => calculate(selectedType, grossN)}>Calculate WHT</CalcButton>
         </div>
 
-        {res && (
-          <div className={cn('space-y-0.5 rounded-xl p-3 border transition-colors duration-300', flash ? 'bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200 dark:border-yellow-700/40' : 'bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-800')}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-gray-500">Rate Applied</span>
-              <RateBadge rate={res.rate} />
+        {/* Payment type — searchable dropdown */}
+        <div className="space-y-1.5" ref={pickerRef}>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+            Payment Type <span className="text-gray-400 dark:text-gray-500 font-normal">· {catItems.length} in {WHT_CAT_LABEL[category]}</span>
+          </label>
+          <div className="relative">
+            {/* Trigger */}
+            <button
+              type="button"
+              onClick={() => { setPickerOpen(o => !o); setSearch(''); }}
+              className={cn('w-full flex items-center justify-between gap-3 pl-3.5 pr-3 py-2.5 rounded-xl border bg-white dark:bg-gray-900 text-left transition focus:outline-none focus:ring-2 focus:ring-blue-500',
+                pickerOpen ? 'border-blue-400 dark:border-blue-600 ring-2 ring-blue-500/30' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600')}
+            >
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-gray-900 dark:text-white truncate">{selected ? selected.name : 'Select payment type'}</span>
+                {selected && <span className="block text-[10px] text-gray-400 dark:text-gray-500 font-mono">GFS {selected.code}</span>}
+              </span>
+              <span className="flex items-center gap-2 flex-shrink-0">
+                {selected && <span className={cn('text-xs font-bold px-2 py-0.5 rounded-full tabular-nums', whtRateChip(selected.rate))}>{selected.rate}%</span>}
+                <svg className={cn('w-4 h-4 text-gray-400 transition-transform duration-200', pickerOpen && 'rotate-180')} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </span>
+            </button>
+
+            {/* Dropdown panel */}
+            {pickerOpen && (
+              <div className="absolute z-30 left-0 right-0 mt-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg dark:shadow-black/40 overflow-hidden">
+                <div className="relative p-2 border-b border-gray-100 dark:border-gray-800">
+                  <svg className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                  <input
+                    autoFocus
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Escape') setPickerOpen(false); }}
+                    placeholder="Search e.g. royalties, rent, 11121119…"
+                    className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                  />
+                </div>
+                <div className="max-h-64 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
+                  {listItems.length === 0 && (
+                    <p className="px-3 py-4 text-xs text-gray-400 text-center">No payment types match “{search}”.</p>
+                  )}
+                  {listItems.map(e => {
+                    const active = e.code === selectedCode;
+                    return (
+                      <button
+                        key={e.code}
+                        onClick={() => { setSelected(e.code); setPickerOpen(false); setSearch(''); }}
+                        className={cn('w-full flex items-center justify-between gap-3 px-3 py-2 text-left transition',
+                          active ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50')}
+                      >
+                        <span className="min-w-0">
+                          <span className={cn('block text-sm leading-snug', active ? 'font-semibold text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300')}>{e.name}</span>
+                          <span className="block text-[10px] text-gray-400 dark:text-gray-500 font-mono mt-0.5">GFS {e.code}</span>
+                        </span>
+                        <span className={cn('flex-shrink-0 text-xs font-bold px-2 py-0.5 rounded-full tabular-nums', whtRateChip(e.rate))}>{e.rate}%</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <MoneyInput label="Gross Payment excl. VAT (TZS)" value={grossStr} onChange={onGross} />
+
+        {/* Result */}
+        {selected && (
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{selected.name}</p>
+                <p className="text-[10px] text-gray-400 dark:text-gray-500 font-mono">GFS {selected.code} · {WHT_CAT_LABEL[selected.category]}</p>
+              </div>
+              <span className={cn('flex-shrink-0 text-sm font-bold px-2.5 py-1 rounded-full tabular-nums', whtRateChip(selected.rate))}>{selected.rate}%</span>
             </div>
-            <ResultRow label="Gross Payment (excl. VAT)" value={fmt(grossN)} />
-            <ResultRow label="Withholding Tax" value={fmt(res.whtAmount)} color="red" />
-            <ResultRow label="Net Payment to Vendor" value={fmt(res.netPayment)} color="green" />
+            <div className="grid grid-cols-3 divide-x divide-gray-100 dark:divide-gray-800">
+              {[
+                { label: 'Withholding Tax', value: hasGross ? fmt(whtAmount) : '—', color: 'text-red-600 dark:text-red-400' },
+                { label: 'Net to Vendor',   value: hasGross ? fmt(netPayment) : '—', color: 'text-green-600 dark:text-green-400' },
+                { label: 'Gross (excl VAT)', value: hasGross ? fmt(grossN) : '—', color: 'text-gray-900 dark:text-white' },
+              ].map(t => (
+                <div key={t.label} className="px-2 py-3.5 text-center">
+                  <p className={cn('text-sm sm:text-base font-bold tabular-nums leading-tight break-words', t.color)}>{t.value}</p>
+                  <p className="text-[10px] sm:text-[11px] text-gray-500 dark:text-gray-400 mt-1">{t.label}</p>
+                </div>
+              ))}
+            </div>
           </div>
         )}
-        <p className="text-xs text-gray-500 dark:text-gray-400">WHT returns are due by the <strong>7th of the following month</strong>.</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">WHT returns and payment are due by the <strong>7th of the following month</strong>.</p>
       </CalcCard>
 
-      {/* Rate reference table */}
-      <div>
-        <h4 className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-2">Rate Reference</h4>
-        <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-          <table className="w-full text-xs">
-            <thead className="bg-gray-50 dark:bg-gray-800/60">
-              <tr>
-                <th className="text-left px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Payment Type</th>
-                <th className="text-right px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {types.map((t, i) => (
-                <tr key={t} className={cn('border-t border-gray-100 dark:border-gray-800', selectedType === t && 'bg-blue-50 dark:bg-blue-900/20')}>
-                  <td className="px-3 py-1.5 text-gray-700 dark:text-gray-300">{t}</td>
-                  <td className="px-3 py-1.5 text-right font-semibold text-blue-700 dark:text-blue-400 tabular-nums">{(whtRates[t] * 100).toFixed(0)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {/* Full GFS rate reference — collapsible, searchable */}
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
+        <button
+          onClick={() => setShowRef(v => !v)}
+          className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
+        >
+          <span className="flex items-center gap-2 min-w-0">
+            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200 truncate">Full WHT Rate Reference</span>
+            <span className="hidden sm:inline text-xs text-gray-400 dark:text-gray-500">· TRA GFS · {WHT_SCHEDULE.length} codes</span>
+          </span>
+          <svg className={cn('w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200', showRef && 'rotate-180')} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+        </button>
+
+        {showRef && (
+          <div className="px-4 pb-4 pt-1 space-y-3">
+            <div className="relative">
+              <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              <input
+                value={refSearch}
+                onChange={e => setRefSearch(e.target.value)}
+                placeholder="Search all 114 codes — name, GFS code or category…"
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+              />
+            </div>
+
+            {WHT_CATEGORIES.map(cat => {
+              const items = refFiltered.filter(e => e.category === cat.key);
+              if (items.length === 0) return null;
+              return (
+                <div key={cat.key}>
+                  <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1.5 mt-1">{cat.label} <span className="text-gray-300 dark:text-gray-600 font-medium">· {items.length}</span></h4>
+                  <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
+                    <table className="w-full text-xs">
+                      <tbody>
+                        {items.map(e => (
+                          <tr key={e.code} className={cn('border-t first:border-t-0 border-gray-100 dark:border-gray-800',
+                            e.code === selectedCode && e.category === category && 'bg-blue-50 dark:bg-blue-900/20')}>
+                            <td className="px-3 py-1.5 font-mono text-[10px] text-gray-400 dark:text-gray-500 whitespace-nowrap align-top w-20">{e.code}</td>
+                            <td className="px-2 py-1.5 text-gray-700 dark:text-gray-300">{e.name}</td>
+                            <td className="px-3 py-1.5 text-right whitespace-nowrap w-14">
+                              <span className={cn('text-xs font-bold px-1.5 py-0.5 rounded tabular-nums', whtRateChip(e.rate))}>{e.rate}%</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+            {refFiltered.length === 0 && (
+              <p className="px-3 py-4 text-xs text-gray-400 text-center">No codes match “{refSearch}”.</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1453,7 +2011,7 @@ export default function TaxTool() {
       {/* Tab content */}
       {activeTab === 'vat'         && <VATSection         taxRates={taxRates} />}
       {activeTab === 'provisional' && <ProvisionalSection taxRates={taxRates} />}
-      {activeTab === 'wht'         && <WHTSection         taxRates={taxRates} />}
+      {activeTab === 'wht'         && <WHTSection />}
       {activeTab === 'employment'  && <EmploymentSection  taxRates={taxRates} />}
       {activeTab === 'cityLevy'    && <CityLevySection    taxRates={taxRates} />}
       {activeTab === 'depreciation' && <DepreciationSection />}

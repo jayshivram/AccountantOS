@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useApp, useTasks, useClients } from '../context/AppContext.jsx';
 import { cn, getUpcomingDeadlines, daysUntil, formatDate, TAX_TYPES, TAX_COLORS } from '../utils/index.js';
 import { EmptyState } from '../components/UI.jsx';
+import { getChecklistForType } from './Filings.jsx';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -34,14 +35,24 @@ function DeadlineCard({ deadline, clients, taxReturns }) {
   const days = deadline.daysRemaining;
 
   // Mark a client's return complete (or reopen it) for this exact type + period.
+  // We must fill in (or clear) every checklist item the Filings tab tracks — that
+  // view derives "done" from the individual step fields, not from `status`, so
+  // setting status alone would leave the two screens out of sync.
   function setClientDone(client, done) {
     const existing = taxReturns.find(
       tr => tr.clientId === client.id && tr.taxType === deadline.type && tr.period === deadline.period
     );
+    const qMatch  = deadline.period.match(/-Q(\d)/);
+    const quarter = qMatch ? Number(qMatch[1]) : 1;
+    const checklist = getChecklistForType(deadline.type, quarter);
+    const fields = {};
+    checklist.forEach(item => { fields[item.key] = done ? (item.doneVal ?? true) : null; });
+
     dispatch({
       type: 'UPSERT_TAX_RETURN',
       payload: {
         ...(existing || {}),
+        ...fields,
         clientId: client.id,
         taxType:  deadline.type,
         period:   deadline.period,
