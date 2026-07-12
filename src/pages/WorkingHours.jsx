@@ -75,12 +75,47 @@ function toMins(t) {
 function calcNetMins(entry = {}) {
   const inM  = toMins(entry.timeIn);
   const outM = toMins(entry.timeOut);
-  if (inM === null || outM === null || outM <= inM) return null;
-  let net = outM - inM;
+  if (inM === null || outM === null) return null;
+  let outAdj = outM;
+  if (outAdj < inM) outAdj += 1440;   // shift crosses midnight (overnight)
+  if (outAdj <= inM) return null;     // equal → nothing worked
+  let net = outAdj - inM;
   const bsM = toMins(entry.breakStart);
-  const beM = toMins(entry.breakStop);
-  if (bsM !== null && beM !== null && beM > bsM) net -= beM - bsM;
+  let   beM = toMins(entry.breakStop);
+  if (bsM !== null && beM !== null) {
+    if (beM < bsM) beM += 1440;       // break also crosses midnight
+    if (beM > bsM) net -= beM - bsM;
+  }
   return net > 0 ? net : null;
+}
+
+/** A shift whose Time Out is earlier than Time In — i.e. it runs past midnight. */
+function isOvernightEntry(entry = {}) {
+  const inM = toMins(entry.timeIn), outM = toMins(entry.timeOut);
+  return inM !== null && outM !== null && outM < inM;
+}
+
+/** A day with exactly one of Time In / Time Out (or one of Break Start / Stop). */
+function isIncompleteEntry(entry = {}) {
+  const hasIn = !!entry.timeIn, hasOut = !!entry.timeOut;
+  const hasBs = !!entry.breakStart, hasBe = !!entry.breakStop;
+  return (hasIn !== hasOut) || (hasBs !== hasBe);
+}
+
+function isPastDate(date) {
+  if (!date) return false;
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const d = new Date(date); d.setHours(0, 0, 0, 0);
+  return d < t;
+}
+
+/** Sum of net minutes + days worked for a given ISO week's stored data. */
+function sumWeek(workingHours, year, w) {
+  const key = `${year}-W${String(w).padStart(2, '0')}`;
+  const wd  = workingHours?.[key] || {};
+  let total = 0, days = 0;
+  DAYS.forEach(day => { const n = calcNetMins(wd[day]); if (n !== null) { total += n; days++; } });
+  return { total, days };
 }
 
 function fmtMins(mins) {
@@ -194,14 +229,14 @@ const SCHEME = {
   },
 };
 
-function TimeCell({ value, onChange, scheme = 'green' }) {
+function TimeCell({ value, onChange, scheme = 'green', fill = false }) {
   const s = SCHEME[scheme];
 
   return (
-    <div className="flex items-center gap-1 min-w-[155px]">
+    <div className={cn('flex items-center gap-1', fill ? 'w-full min-w-0' : 'min-w-[155px]')}>
       {/* Native time input with styled border */}
       <div className={cn(
-        'rounded-lg border flex-1 transition-colors bg-white dark:bg-gray-900 focus-within:ring-2 focus-within:ring-blue-400/40 focus-within:ring-offset-1',
+        'rounded-lg border flex-1 min-w-0 transition-colors bg-white dark:bg-gray-900 focus-within:ring-2 focus-within:ring-blue-400/40 focus-within:ring-offset-1',
         s.border
       )}>
         <input
@@ -495,6 +530,163 @@ function DayTimeline({ entry, use12h }) {
   );
 }
 
+// ─── Mini Bar Chart ──────────────────────────────────────────────────────────
+// Compact bar chart. `bars` = [{ label, mins }]. Optional dashed reference line
+// (e.g. daily target) drives the per-bar colour (green ≥ ref, amber ≥ 80%, else rose).
+
+function MiniBars({ bars, refMins = 0, refLabel }) {
+  const peak = Math.max(refMins, ...bars.map(b => b.mins || 0), 60);
+  // With a target, keep the reference line ~60% up the plot so a day that meets
+  // or beats it has clear room to rise above; otherwise just add headroom.
+  const max = refMins > 0 ? Math.max(peak, refMins / 0.6) * 1.05 : peak * 1.12;
+  const targetFrac = refMins > 0 ? refMins / max : 0;
+  const yOf = mins => `${(mins / max) * 100}%`;
+
+  return (
+    <div>
+      {/* Plot area — each column holds exactly one bar so % heights stay exact. */}
+      <div className="relative h-32 flex items-end gap-2 sm:gap-3">
+        {refMins > 0 && (
+          <div className="absolute inset-x-0 z-10 pointer-events-none border-t border-dashed border-blue-400/70 dark:border-blue-500/60" style={{ bottom: yOf(refMins) }}>
+            {refLabel && <span className="absolute right-0 -top-3.5 text-[9px] font-semibold text-blue-500 dark:text-blue-400 whitespace-nowrap">{refLabel}</span>}
+          </div>
+        )}
+        {bars.map((b, i) => {
+          const raw = b.mins > 0 ? b.mins / max : 0;
+          // A day over target is nudged to clearly clear the line — 10 min over
+          // 8h is only ~2%, too small to read proportionally. The exact figure
+          // stays on the label above the bar.
+          const frac = (refMins > 0 && b.mins > refMins) ? Math.max(raw, targetFrac + 0.09) : raw;
+          const h   = b.mins > 0 ? Math.max(2, frac * 100) : 0;
+          const pct = refMins > 0 ? b.mins / refMins : 1;
+          const color = b.mins <= 0
+            ? 'bg-gray-100 dark:bg-gray-800'
+            : refMins > 0
+              ? (pct >= 1 ? 'bg-emerald-500' : pct >= 0.8 ? 'bg-amber-400' : 'bg-rose-400')
+              : 'bg-blue-500';
+          return (
+            <div key={i} className="flex-1 h-full relative flex items-end justify-center" title={b.mins > 0 ? fmtMins(b.mins) : 'No hours'}>
+              {b.mins > 0 && (
+                <span
+                  className="absolute inset-x-0 text-center text-[9px] font-semibold tabular-nums text-gray-500 dark:text-gray-400 whitespace-nowrap"
+                  style={{ bottom: `calc(${h}% + 3px)` }}
+                >
+                  {fmtMins(b.mins)}
+                </span>
+              )}
+              <div className={cn('w-full max-w-[2rem] rounded-t-md transition-all duration-500', color)} style={{ height: `${h}%` }} />
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex gap-2 sm:gap-3 mt-1.5">
+        {bars.map((b, i) => (
+          <div key={i} className="flex-1 text-center text-[10px] font-medium text-gray-500 dark:text-gray-400 truncate">{b.label}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Monthly View ────────────────────────────────────────────────────────────
+// Payroll-style rollup: each ISO week whose Monday falls in the month, plus totals.
+
+function MonthView({ year, month, weeks, totals, isCurrentMonth, onPrev, onNext, onToday }) {
+  const cards = [
+    { label: 'Month Total', value: fmtMins(totals.total), sub: `${totals.days} day${totals.days !== 1 ? 's' : ''} worked`, color: 'text-blue-600 dark:text-blue-400',    bg: 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800/30' },
+    { label: 'Avg / Day',   value: totals.avg ? fmtMins(totals.avg) : '—',                 sub: 'across working days', color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-900/20 border-purple-100 dark:border-purple-800/30' },
+    { label: 'Days Worked', value: String(totals.days),                                    sub: 'this month',          color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/30' },
+    { label: 'Weeks Logged', value: `${totals.weeks}/${weeks.length}`,                     sub: 'weeks with hours',    color: 'text-amber-600 dark:text-amber-400',   bg: 'bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800/30' },
+  ];
+
+  return (
+    <>
+      {/* Month navigator */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl px-4 py-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <button onClick={onPrev} className="flex items-center gap-1 px-3 py-2 rounded-xl text-sm font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition flex-shrink-0">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            <span className="hidden sm:inline">Prev</span>
+          </button>
+          <div className="flex-1 flex flex-col items-center">
+            <div className="flex items-center gap-2 flex-wrap justify-center">
+              <p className="font-bold text-gray-900 dark:text-white text-base">{MONTHS_SHORT[month]} {year}</p>
+              {isCurrentMonth && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700/40">Current</span>
+              )}
+            </div>
+            {!isCurrentMonth && (
+              <button onClick={onToday} className="mt-2 text-xs font-medium px-2.5 py-1 rounded-lg text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700/40 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition">
+                Go to This Month
+              </button>
+            )}
+          </div>
+          <button onClick={onNext} className="flex items-center gap-1 px-3 py-2 rounded-xl text-sm font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition flex-shrink-0">
+            <span className="hidden sm:inline">Next</span>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Month stat cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {cards.map(c => (
+          <div key={c.label} className={cn('rounded-2xl p-4 border', c.bg)}>
+            <span className={cn('text-[10px] font-bold uppercase tracking-wider', c.color)}>{c.label}</span>
+            <p className={cn('text-xl font-bold tabular-nums mt-1.5', c.color)}>{c.value}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{c.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Weekly-totals chart */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl px-4 py-4 shadow-sm">
+        <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Weekly Totals</h3>
+        {totals.total > 0
+          ? <MiniBars bars={weeks.map(w => ({ label: `W${w.week}`, mins: w.total }))} />
+          : <p className="text-sm text-gray-400 dark:text-gray-600 text-center py-6">No hours logged this month yet.</p>}
+      </div>
+
+      {/* Weeks table */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Week</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Range</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Days</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Avg / Day</th>
+              </tr>
+            </thead>
+            <tbody>
+              {weeks.map((w, i) => (
+                <tr key={w.week} className={cn('border-b border-gray-100 dark:border-gray-800', w.total > 0 ? '' : 'opacity-60')}>
+                  <td className="px-4 py-2.5 font-bold text-gray-900 dark:text-white whitespace-nowrap">Wk {w.week}</td>
+                  <td className="px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap tabular-nums">{fmtDate(w.mon)} – {fmtDate(w.sat)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-gray-600 dark:text-gray-300">{w.days || '—'}</td>
+                  <td className={cn('px-4 py-2.5 text-right font-bold tabular-nums', w.total > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-300 dark:text-gray-700')}>{fmtMins(w.total)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-gray-600 dark:text-gray-300">{w.days > 0 ? fmtMins(Math.round(w.total / w.days)) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60">
+                <td className="px-4 py-3 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Month Total</td>
+                <td className="px-4 py-3 text-xs text-gray-400 dark:text-gray-500 tabular-nums">{totals.days} day{totals.days !== 1 ? 's' : ''}</td>
+                <td className="px-4 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-white">{totals.days}</td>
+                <td className="px-4 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-white">{fmtMins(totals.total)}</td>
+                <td className="px-4 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-white">{totals.avg ? fmtMins(totals.avg) : '—'}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // â”€â”€â”€ Working Hours Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function WorkingHours() {
@@ -504,12 +696,12 @@ export default function WorkingHours() {
   const { week: initWeek, year: initYear } = useMemo(() => currentISOWeek(), []);
   const [week, setWeek] = useState(initWeek);
   const [year, setYear] = useState(initYear);
+  const [viewMode, setViewMode] = useState('week');            // 'week' | 'month'
+  const [month, setMonth] = useState(() => new Date().getMonth());
   const [jumpOpen, setJumpOpen] = useState(false);
   const [confirmState, setConfirmState] = useState({ isOpen: false, day: null, field: null, value: null, currentValue: null });
   const [showTimeline, setShowTimeline] = useState(false);
-  const [dailyTargetMins, setDailyTargetMins] = useState(() => {
-    try { const s = localStorage.getItem('wh-daily-target'); return s ? parseInt(s, 10) : 480; } catch { return 480; }
-  });
+  const dailyTargetMins = state.whDailyTarget ?? 480;
 
   const totalWeeks = useMemo(() => isoWeeksInYear(year), [year]);
   const weekKey    = `${year}-W${String(week).padStart(2, '0')}`;
@@ -542,11 +734,77 @@ export default function WorkingHours() {
     setWeek(now.week); setYear(now.year);
   }
   function adjustTarget(delta) {
-    setDailyTargetMins(prev => {
-      const next = Math.max(60, Math.min(720, prev + delta));
-      try { localStorage.setItem('wh-daily-target', String(next)); } catch {}
-      return next;
+    const next = Math.max(60, Math.min(720, dailyTargetMins + delta));
+    dispatch({ type: 'SET_WH_DAILY_TARGET', payload: next });
+  }
+
+  // ── Month rollup (computed for the month view) ──
+  const monthWeeks = useMemo(() => {
+    return getWeeksForMonth(year, month).map(({ week: w, mon, sat }) => {
+      const { total, days } = sumWeek(state.workingHours, year, w);
+      return { week: w, mon, sat, total, days };
     });
+  }, [state.workingHours, year, month]);
+
+  const monthTotals = useMemo(() => {
+    const total = monthWeeks.reduce((s, w) => s + w.total, 0);
+    const days  = monthWeeks.reduce((s, w) => s + w.days, 0);
+    return { total, days, avg: days > 0 ? Math.round(total / days) : null, weeks: monthWeeks.filter(w => w.total > 0).length };
+  }, [monthWeeks]);
+
+  const isCurrentMonth = useMemo(() => {
+    const n = new Date();
+    return n.getFullYear() === year && n.getMonth() === month;
+  }, [year, month]);
+
+  function prevMonth() {
+    if (month === 0) { setMonth(11); setYear(y => y - 1); }
+    else setMonth(month - 1);
+  }
+  function nextMonth() {
+    if (month === 11) { setMonth(0); setYear(y => y + 1); }
+    else setMonth(month + 1);
+  }
+  function goToCurrentMonth() { const n = new Date(); setYear(n.getFullYear()); setMonth(n.getMonth()); }
+
+  function exportMonthXLSX() {
+    const header = ['Week', 'Range', 'Days Worked', 'Total Hours', 'Avg / Day'];
+    const rows = monthWeeks.map(w => [
+      `Wk ${w.week}`, `${fmtDate(w.mon)} – ${fmtDate(w.sat)}`, w.days,
+      fmtMins(w.total), w.days > 0 ? fmtMins(Math.round(w.total / w.days)) : '—',
+    ]);
+    rows.push(['', 'TOTAL', monthTotals.days, fmtMins(monthTotals.total), monthTotals.avg ? fmtMins(monthTotals.avg) : '—']);
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Monthly Hours');
+    XLSX.writeFile(wb, `working-hours-${year}-${MONTHS_SHORT[month]}.xlsx`);
+  }
+
+  function exportMonthPDF() {
+    const header = ['Week', 'Range', 'Days Worked', 'Total Hours', 'Avg / Day'];
+    const rows = monthWeeks.map(w => [
+      `Wk ${w.week}`, `${fmtDate(w.mon)} – ${fmtDate(w.sat)}`, String(w.days),
+      fmtMins(w.total), w.days > 0 ? fmtMins(Math.round(w.total / w.days)) : '–',
+    ]);
+    rows.push(['', 'TOTAL', String(monthTotals.days), fmtMins(monthTotals.total), monthTotals.avg ? fmtMins(monthTotals.avg) : '–']);
+    const headerRow = header.map(h => `<th style="padding:8px 10px;background:#f3f4f6;border:1px solid #d1d5db;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;font-weight:600;">${h}</th>`).join('');
+    const bodyRows = rows.map((r, ri) => {
+      const isTotal = ri === rows.length - 1;
+      const bg = isTotal ? '#f9fafb' : ri % 2 === 0 ? '#ffffff' : '#f9fafb';
+      return `<tr>${r.map((cell, ci) => `<td style="padding:7px 10px;border:1px solid #e5e7eb;font-size:12px;background:${bg};font-weight:${isTotal || ci === 3 ? '700' : '400'};color:${isTotal && ci === 3 ? '#059669' : '#111827'};">${escapeHtml(cell)}</td>`).join('')}</tr>`;
+    }).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Working Hours – ${MONTHS_SHORT[month]} ${year}</title>
+<style>body{font-family:Arial,sans-serif;margin:24px;color:#111827;}h2{margin:0 0 4px;font-size:16px;}p{margin:0 0 14px;font-size:12px;color:#6b7280;}table{border-collapse:collapse;width:100%;}@media print{body{margin:12px;}}</style>
+</head><body>
+<h2>Working Hours &mdash; ${MONTHS_SHORT[month]} ${year}</h2>
+<p>Month total ${fmtMins(monthTotals.total)} &middot; ${monthTotals.days} days worked${monthTotals.avg ? ` &middot; avg ${fmtMins(monthTotals.avg)}/day` : ''}</p>
+<table><thead><tr>${headerRow}</tr></thead><tbody>${bodyRows}</tbody></table>
+</body></html>`;
+    const w = window.open('', '_blank', 'width=900,height=650');
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.onload = () => { w.focus(); w.print(); };
   }
 
   const handleChange = useCallback((day, field, value) => {
@@ -567,6 +825,22 @@ export default function WorkingHours() {
 
   const netMinsPerDay = DAYS.map(day => calcNetMins(weekData[day]));
   const totalMins     = netMinsPerDay.reduce((s, m) => s + (m || 0), 0);
+
+  // Per-day view model, shared by the desktop table and the mobile card list.
+  const dayRows = DAYS.map((day, i) => {
+    const entry     = weekData[day] || {};
+    const netMins   = netMinsPerDay[i];
+    const date      = weekDates[i];
+    const td        = new Date();
+    const isToday   = date && date.getDate() === td.getDate() && date.getMonth() === td.getMonth() && date.getFullYear() === td.getFullYear();
+    const isSat     = day === 'Sat';
+    const pct       = netMins && netMins > 0 ? Math.min(100, Math.round((netMins / dailyTargetMins) * 100)) : 0;
+    return {
+      day, i, entry, netMins, date, isToday, isSat, pct,
+      incomplete: isPastDate(date) && isIncompleteEntry(entry),
+      overnight:  isOvernightEntry(entry),
+    };
+  });
 
   function exportXLSX() {
     const header = ['Day', 'Date', 'Time In', 'Break Start', 'Break Stop', 'Time Out', 'Net Hours'];
@@ -630,9 +904,24 @@ export default function WorkingHours() {
             Personal time tracker &middot; {use12h ? '12-hour' : '24-hour'} format
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+          {/* Week / Month view toggle */}
+          <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl mr-1">
+            {['week', 'month'].map(v => (
+              <button
+                key={v}
+                onClick={() => setViewMode(v)}
+                className={cn(
+                  'px-3 py-1.5 text-sm font-semibold rounded-lg transition capitalize',
+                  viewMode === v ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                )}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
           <button
-            onClick={exportXLSX}
+            onClick={viewMode === 'week' ? exportXLSX : exportMonthXLSX}
             className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700
               text-white font-semibold text-sm rounded-xl shadow-md shadow-emerald-600/20
               focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-gray-950
@@ -642,10 +931,10 @@ export default function WorkingHours() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
-            Export Excel
+            <span className="hidden sm:inline">Export </span>Excel
           </button>
           <button
-            onClick={exportPDF}
+            onClick={viewMode === 'week' ? exportPDF : exportMonthPDF}
             className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-700 hover:bg-gray-800
               dark:bg-gray-700 dark:hover:bg-gray-600
               text-white font-semibold text-sm rounded-xl shadow-md
@@ -656,13 +945,36 @@ export default function WorkingHours() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
             </svg>
-            Export PDF
+            <span className="hidden sm:inline">Export </span>PDF
           </button>
         </div>
       </div>
 
       {/* â”€â”€ Stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {viewMode === 'month' && (
+        <MonthView
+          year={year} month={month}
+          weeks={monthWeeks} totals={monthTotals}
+          isCurrentMonth={isCurrentMonth}
+          onPrev={prevMonth} onNext={nextMonth} onToday={goToCurrentMonth}
+        />
+      )}
+
+      {viewMode === 'week' && (<>
       <StatsCards weekData={weekData} use12h={use12h} />
+
+      {/* Week at a glance — daily bar chart */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl px-4 py-4 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">This Week</h3>
+          <span className="text-xs text-gray-400 dark:text-gray-500">Target {fmtMins(dailyTargetMins)}/day</span>
+        </div>
+        <MiniBars
+          bars={DAYS.map((d, i) => ({ label: d, mins: netMinsPerDay[i] || 0 }))}
+          refMins={dailyTargetMins}
+          refLabel={fmtMins(dailyTargetMins)}
+        />
+      </div>
 
       {/* â”€â”€ Week Navigator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl px-4 py-4 shadow-sm">
@@ -800,7 +1112,7 @@ export default function WorkingHours() {
           </button>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto hidden lg:block">
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800">
@@ -848,21 +1160,9 @@ export default function WorkingHours() {
             </thead>
 
             <tbody>
-              {DAYS.map((day, i) => {
-                const entry     = weekData[day] || {};
-                const netMins   = netMinsPerDay[i];
-                const date      = weekDates[i];
-                const todayDate = new Date();
-                const isToday   = date &&
-                  date.getDate() === todayDate.getDate() &&
-                  date.getMonth() === todayDate.getMonth() &&
-                  date.getFullYear() === todayDate.getFullYear();
-                const isSat  = day === 'Sat';
+              {dayRows.map(({ day, entry, netMins, date, isToday, isSat, pct, incomplete, overnight }) => {
                 const rowBg  = isToday ? 'bg-blue-50/50 dark:bg-blue-900/10'
                              : isSat   ? 'bg-gray-50/40 dark:bg-gray-800/10' : '';
-                const pct    = netMins && netMins > 0
-                  ? Math.min(100, Math.round((netMins / dailyTargetMins) * 100))
-                  : 0;
 
                 return (
                   <React.Fragment key={day}>
@@ -929,14 +1229,28 @@ export default function WorkingHours() {
 
                       {/* Net Hours + progress bar */}
                       <td className="px-4 py-2.5 text-right min-w-[100px]">
-                        <span className={cn(
-                          'font-bold text-sm tabular-nums',
-                          netMins && netMins > 0
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : 'text-gray-300 dark:text-gray-700'
-                        )}>
-                          {fmtMins(netMins)}
-                        </span>
+                        <div className="flex items-center justify-end gap-1.5">
+                          {incomplete && (
+                            <span title="Incomplete — this past day is missing a Time In or Time Out" className="text-amber-500 dark:text-amber-400 flex-shrink-0">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                              </svg>
+                            </span>
+                          )}
+                          <span className={cn(
+                            'font-bold text-sm tabular-nums',
+                            netMins && netMins > 0
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-gray-300 dark:text-gray-700'
+                          )}>
+                            {fmtMins(netMins)}
+                          </span>
+                        </div>
+                        {overnight && (
+                          <span title="Time Out is before Time In — counted as an overnight shift" className="block text-[10px] font-semibold text-indigo-500 dark:text-indigo-400 mt-0.5">
+                            overnight
+                          </span>
+                        )}
                         {isToday && isCurrentWeek && entry.timeIn && !entry.timeOut && (
                           <LiveNetTimer
                             timeIn={entry.timeIn}
@@ -992,11 +1306,69 @@ export default function WorkingHours() {
             </tfoot>
           </table>
         </div>
-      </div>
 
-      <p className="text-xs text-center text-gray-400 dark:text-gray-600 lg:hidden">
-        Scroll horizontally to see all columns
-      </p>
+        {/* Mobile: one tappable card per day — no horizontal scrolling */}
+        <div className="lg:hidden divide-y divide-gray-100 dark:divide-gray-800">
+          {dayRows.map(({ day, entry, netMins, date, isToday, isSat, pct, incomplete, overnight }) => {
+            const rowBg = isToday ? 'bg-blue-50/40 dark:bg-blue-900/10' : '';
+            return (
+              <div key={day} className={cn('px-3 py-3', rowBg)}>
+                {/* Header: day + date + net hours */}
+                <div className="flex items-center justify-between gap-2 mb-2.5">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={cn('font-bold text-sm', isToday ? 'text-blue-600 dark:text-blue-400' : isSat ? 'text-gray-500 dark:text-gray-500' : 'text-gray-900 dark:text-white')}>{day}</span>
+                    {isToday && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-600 text-white leading-none">NOW</span>}
+                    <span className="text-xs font-medium text-gray-400 dark:text-gray-500 tabular-nums">{date ? fmtDate(date) : ''}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {incomplete && (
+                      <span title="Incomplete — this past day is missing a Time In or Time Out" className="text-amber-500 dark:text-amber-400">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                      </span>
+                    )}
+                    <span className={cn('font-bold text-sm tabular-nums', netMins && netMins > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-300 dark:text-gray-700')}>{fmtMins(netMins)}</span>
+                    {overnight && <span className="text-[10px] font-semibold text-indigo-500 dark:text-indigo-400">overnight</span>}
+                  </div>
+                </div>
+
+                {/* 2×2 time fields */}
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    ['Time In',     entry.timeIn,     'timeIn',     'green'],
+                    ['Break Start', entry.breakStart, 'breakStart', 'amber'],
+                    ['Break Stop',  entry.breakStop,  'breakStop',  'amber'],
+                    ['Time Out',    entry.timeOut,    'timeOut',    'red'],
+                  ].map(([label, val, field, scheme]) => (
+                    <div key={field} className="space-y-1 min-w-0">
+                      <label className="block text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{label}</label>
+                      <TimeCell value={val} onChange={v => handleChange(day, field, v)} scheme={scheme} fill />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Live timer for today, then progress + timeline */}
+                {isToday && isCurrentWeek && entry.timeIn && !entry.timeOut && (
+                  <div className="mt-2 flex justify-end"><LiveNetTimer timeIn={entry.timeIn} breakStart={entry.breakStart} breakStop={entry.breakStop} /></div>
+                )}
+                {pct > 0 && (
+                  <div className="mt-2 w-full h-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                    <div className={cn('h-full rounded-full transition-all duration-500', pct >= 100 ? 'bg-emerald-500' : pct >= 80 ? 'bg-amber-400' : 'bg-rose-400')} style={{ width: `${pct}%` }} />
+                  </div>
+                )}
+                {showTimeline && entry.timeIn && (
+                  <div className="mt-2"><DayTimeline entry={entry} use12h={use12h} /></div>
+                )}
+              </div>
+            );
+          })}
+          {/* Weekly total */}
+          <div className="flex items-center justify-between px-3 py-3 bg-gray-50 dark:bg-gray-800/60">
+            <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Weekly Total</span>
+            <span className={cn('font-bold text-base tabular-nums', totalMins > 0 ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-600')}>{fmtMins(totalMins)}</span>
+          </div>
+        </div>
+      </div>
+      </>)}
 
       <ConfirmDialog
         isOpen={confirmState.isOpen}

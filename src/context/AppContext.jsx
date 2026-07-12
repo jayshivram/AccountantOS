@@ -5,6 +5,13 @@ import { supabase } from '../lib/supabase.js';
 
 // ─── Initial State ─────────────────────────────────────────────────────────────
 
+// One-time migration: the working-hours daily target used to live in a standalone
+// localStorage key ('wh-daily-target'); it now syncs as part of app state.
+function legacyDailyTarget() {
+  try { const s = localStorage.getItem('wh-daily-target'); const n = s ? parseInt(s, 10) : NaN; return Number.isFinite(n) ? n : 480; }
+  catch { return 480; }
+}
+
 function getInitialState() {
   const saved = loadState();
   if (saved) {
@@ -19,6 +26,7 @@ function getInitialState() {
       documents:            saved.documents             || [],
       workingHours:         saved.workingHours          || {},
       hourFormat:           saved.hourFormat            || '24',
+      whDailyTarget:        saved.whDailyTarget         ?? legacyDailyTarget(),
       monthlyWork:          saved.monthlyWork           || [],
       clientWorkTemplates:  saved.clientWorkTemplates   || {},
       monthlyWorkClients:   saved.monthlyWorkClients    || [],
@@ -40,6 +48,7 @@ function getInitialState() {
     documents:            [],
     workingHours:         {},
     hourFormat:           '24',
+    whDailyTarget:        legacyDailyTarget(),
     darkMode:             false,
     notifications:        false,
     monthlyWork:          [],
@@ -321,6 +330,9 @@ function reducer(state, action) {
     // ── Working Hours (personal, per-user) ──
     case 'SET_HOUR_FORMAT':
       return { ...state, hourFormat: action.payload };
+
+    case 'SET_WH_DAILY_TARGET':
+      return { ...state, whDailyTarget: action.payload };
 
     case 'SET_WORKING_HOURS_ENTRY': {
       const { weekKey, day, field, value } = action.payload;
